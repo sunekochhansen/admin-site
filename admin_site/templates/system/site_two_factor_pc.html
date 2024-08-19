@@ -1,0 +1,151 @@
+{% extends "site_with_navigation.html" %}
+{% load i18n %}
+{% block specific_title %}
+{% translate "Enable two-factor authentication for superuser login on OS2borgerPC and OS2borgerPC Kiosk" %}
+{% endblock %}
+
+{% block head_javascripts %}
+  <script type="text/javascript" src="/static/js/qrcode.min.js"></script>
+{% endblock %}
+
+{% block stylesheets %}
+<style type="text/css" media="screen">
+  .tab-content {
+    line-height: 2.3em;
+  }
+</style>
+{% endblock %}
+
+{% block specific_content %}
+  <div class="container-fluid main">
+
+    <div class="tab-content">
+      <div class="alert alert-info">
+        <strong>{% translate "Note" %}</strong>
+        <ul>
+          <li>{% blocktranslate trimmed %}
+            This section is related to setting up two-factor authentication for superuser on an OS2borgerPC or OS2borgerPC Kiosk computer.
+          {% endblocktranslate %}</li>
+          <li>{% blocktranslate trimmed %}
+            Two-factor authentication on your admin-site profile is administered from the Users-section.
+          {% endblocktranslate %}</li>
+        </ul>
+      </div>
+
+    <ol>
+      <li class="py-3">
+        <strong>{% translate "Create security key and QR" %}</strong><br/>
+        <button class="btn btn-secondary my-3" name="generate-security-key-qr" id="generate-security-key-qr">
+          {% translate "Generate security key and QR" %}
+        </button>
+        <div id="security-key" class="d-none">
+          <p class='mb-0' id='key-text'>{% translate "Security key:" %}</p>
+          <!-- Koden skal være i base32 - 26 tegn bestående af A-Z og 2-7 (ikke 0-9!) -->
+          <p>
+            <span id="security-text" class="copy-text"></span>
+            <button class="btn btn-link copy-btn">
+              <span class="material-icons">content_copy</span>
+            </button>
+            <span class="d-none after-copy-text">{% translate "Security Key copied!" %}</span>
+          </p>
+          <div id="qr"></div>
+        </div>
+      </li>
+      <li class="py-3">
+        <p><strong>{% translate "Scan the QR code from step 1 with your authenticator app" %}</strong></p>
+        <p>{% translate "Some examples of authenticator apps are:" %}</p>
+          <table class="table">
+            <thead>
+              <tr>
+                <td><strong>{% translate "App" %}</strong></td>
+                <td><strong>{% translate "Platform" %}</strong></td>
+                <td><strong>{% translate "Open Source" %}</strong></td>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><a href="https://freeotp.github.io" target="_blank">FreeOTP Authenticator</a></td>
+                <td>Android, IOS</td>
+                <td><span class="material-icons">check</span></td>
+              </tr>
+              <tr>
+                <td><a href="https://getaegis.app/" target="_blank">Aegis Authenticator</a></td>
+                <td>Android</td>
+                <td><span class="material-icons">check</span></td>
+              </tr>
+              <tr>
+                <td><a href="https://authy.com" target="_blank">Authy</a></td>
+                <td>Android, IOS</td>
+                <td><span class="material-icons">close</span></td>
+              </tr>
+              <tr>
+                <td><a href="https://www.microsoft.com/en-us/security/mobile-authenticator-app" target="_blank">Microsoft Authenticator</a></td>
+                <td>Android, IOS</td>
+                <td><span class="material-icons">close</span></td>
+              </tr>
+              <!-- A better link would direct to both the version on Android and IOS, but I'm not sure one currently exists? -->
+              <tr>
+                <td><a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank">Google Authenticator</a></td>
+                <td>Android, IOS</td>
+                <td><span class="material-icons">close</span></td>
+              </tr>
+            </tbody>
+          </table>
+      </li>
+      <li class="py-3">
+        <p><strong>{% translate "Copy the security key from step 1 and run the two-factor script with it as input" %}</strong></p>
+        <p>
+          {% translate "Click on" %}
+          <a href="{% url 'script_redirect_uid' 'two_factor' %}" target="_blank">{% translate "Two-factor authentication for superuser" %}</a>
+          {% translate "to go to the script" %}.
+        </p>
+      </li>
+    </ol>
+    </div>
+  </div>
+
+  <script charset="utf-8">
+    const user = 'superuser'
+    // Generate a pseudo random security code
+    function generate_security_code() {
+      let security_code = ''
+      // The one the interactive program generates is A-Z2-7 and 26 characters, so we use that format
+      // The format of the code is apparently base32, and based on generating many of them they don't contain
+      // 0-1 or 8-9
+      // If a code DOES contain those numbers my auth app fails reading the QR
+      const character_set = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+      const security_code_length = 26
+      const character_set_length = character_set.length
+      for ( var i = 0; i < security_code_length; i++ ) {
+        security_code += character_set.charAt(Math.floor(Math.random() * character_set_length))
+      }
+      const copy_el = document.getElementById('security-key')
+
+      copy_el.classList.remove('d-none')
+      document.getElementById('security-text').innerText = security_code
+
+      copy_button(copy_el)
+    }
+
+    // Update page to show the QR code
+    function generate_qr() {
+      let security_code = document.getElementById('security-text').innerText
+
+      // Normally 'any' below is the hostname, but we're setting it up on multiple machines with different
+      // hostnames, but fortunately it's not important
+      const el = document.getElementById("qr")
+      el.innerHTML = "" // First empty the element as otherwise qrcode adds a new one next to the others each time
+      // url = "otpauth://totp/" + user + "@any%3Fsecret%3D" + security_code + "%26issuer%3Dany"
+      url = "otpauth://totp/" + user + "@any?secret=" + security_code + "&issuer=any"
+      new QRCode(el, url)
+    }
+
+    function generate_security_code_and_qr() {
+      generate_security_code()
+      generate_qr()
+    }
+
+    const btn_gen_sec = document.getElementById('generate-security-key-qr')
+    btn_gen_sec.addEventListener('click', generate_security_code_and_qr)
+  </script>
+{% endblock %}

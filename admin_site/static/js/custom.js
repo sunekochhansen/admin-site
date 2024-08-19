@@ -1,3 +1,45 @@
+
+// This event displays the notification message in the toast element, when the page is loaded
+document.addEventListener('DOMContentLoaded', (event) => {
+  
+  // First check if there is a page-notification in the cookie with the response from the server  
+  let notification = document.cookie.match(/\bpage-notification\s*=\s*([^;]+)/)
+  
+  if(notification) {
+    try {
+
+      let descriptor = JSON.parse(decodeURIComponent(notification[1]))
+
+      // The bootstrap 5 toast html element, located in the notification.html file and must be included in the html to display the toast
+      const toastElement = document.getElementById("toast")
+      const toastBody = toastElement.firstElementChild.firstElementChild
+      
+      let toast_color="bg-success"
+      // if autoHide is set to true, the toast will disappear automatically, default is 5 seconds
+      let autoHide = true
+      
+      // Reset the toast color if the message type is error
+      if (descriptor["type"] == "error") {
+        toast_color = "bg-danger"
+        autoHide = false
+      }
+
+      toastElement.classList.add(toast_color)
+      toastBody.innerText = descriptor["message"]
+
+      const toast = new bootstrap.Toast(toastElement, {autohide: autoHide})
+      toast.show()
+
+    } catch (e) {
+      console.error(e)
+    }
+    // Set the cookie to a past date, so it will be deleted
+    document.cookie = 'page-notification=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/'
+  }
+});
+
+
+
 // Set up global BibOS instance used for accessing utility methods
 var BibOS
 (function($) {
@@ -37,31 +79,26 @@ var BibOS
 
       $('#editconfig_value').attr('maxlength', 4096)
 
-      var m = document.cookie.match(/\bbibos-notification\s*=\s*([^;]+)/)
-      if(m) {
-        try {
-          var descriptor = JSON.parse(decodeURIComponent(m[1]))
-          notification = $('.bibos-notification').first()
-          if (descriptor["type"] == "error") {
-            notification.addClass("alert-danger")
-          } else {
-            notification.addClass("alert-success")
-          }
-          notification.toggleClass(["d-block", "d-none"])
-          notification.html(descriptor["message"]).fadeIn()
-        } catch (e) {
-          /* If there was an exception here, then the cookie was malformed --
-             print the exception to the console and continue, clearing the
-             broken cookie */
-          console.error(e)
-        }
-        document.cookie = 'bibos-notification=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/'
-      }
-
       if(location.href.match(documentation_match))
       {
         this.setupDocumentationBackLinks()
       }
+
+      // TODO: With this we can link directly to a specific tab
+      // The functionality can be used to make tab forms redirect to whatever the current tab is, after pressing "Save" on
+      // the form.
+      // Example: This URL should go directly to site configs:
+      // http://localhost:9999/site/magenta/settings/#configs-tab
+      // In other words you trigger it based off the ID of the button activating it, rather than the ID of the tab
+      // itself.
+      if (window.location.hash) {
+        var someTabTriggerEl = document.querySelector(window.location.hash)
+        var tab = new bootstrap.Tab(someTabTriggerEl)
+        tab.show()
+        // Now remove the tab's highlighting
+        tab._element.blur()
+      }
+
     },
     setupDocumentationBackLinks: function() {
       var ref = document.referrer || ''
@@ -237,7 +274,7 @@ var BibOS
         lastInsert(elem)
     },
     setupJobInfoButtons: function(rootElem) {
-      // initialize all popovers.
+      // initialize all job info popovers.
       var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
       var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
         return new bootstrap.Popover(popoverTriggerEl)
@@ -245,6 +282,7 @@ var BibOS
 
       var t = this
 
+      // JOBINFOBUTTON
       $(rootElem).find('.jobinfobutton').on('show.bs.popover', function(e) {
         // hide all popovers before a new popover is shown.
         popoverTriggerList.map(function (popoverTriggerEl) {
@@ -257,7 +295,7 @@ var BibOS
       })
     },
     setupSecurityEventLogInfoButtons: function(rootElem) {
-      // initialize all popovers.
+      // initialize all security event log info popovers.
       var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
       var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
         return new bootstrap.Popover(popoverTriggerEl)
@@ -291,6 +329,13 @@ var BibOS
           // set content from backend data and redraw popover.
           triggerElem.attr("data-bs-content", data)
           popover.setContent()
+
+          const parser = new DOMParser();
+          const dataHTML = parser.parseFromString(data, 'text/html');
+
+          const jobLog = dataHTML.getElementById("job-log").innerText
+
+          addEventListenerForClipBoardButton(jobLog)
         },
         'error': function() {
         }
@@ -303,7 +348,7 @@ var BibOS
   b.init()
   $(function() { b.onDOMReady() })
 
-  // Setup support for CSRFToken in ajax calls
+  //(Setup support for CSRFToken in ajax calls
   $.ajaxSetup({
     beforeSend: function(xhr, settings) {
       if (!b.csrfSafeMethod(settings.type) && b.sameOrigin(settings.url)) {
@@ -347,3 +392,67 @@ function oldBrowserWarning() {
 window.addEventListener('load', function() {
   oldBrowserWarning()
 })
+
+// Function to get the value of a named cookie
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+/* Currently only used by the job log copy button */
+function addEventListenerForClipBoardButton(log) {
+  let btn = document.getElementById("clipboard-button")
+
+  btn.addEventListener('click', () => {
+
+    navigator.clipboard.writeText(log)
+
+    btn.getElementsByClassName("copy-btn-text-orig")[0].classList.add('d-none')
+    btn.lastElementChild.classList.remove('d-none')
+  })
+}
+
+/* General purpose copy button */
+/* It expects to receive a parent element containing elements with the classes:
+ * copy-btn: The button to attach the event listener to, which copies
+ * copy-text: The element containing the text to copy
+ * after-copy-text: The element containing the text to be shown after copying
+*/
+function copy_button(el) {
+  const btn = el.getElementsByClassName('copy-btn')[0]
+
+  btn.addEventListener('click', () => {
+
+    const text_to_copy = el.getElementsByClassName('copy-text')[0].innerText
+    const el_to_show_after_copy = el.getElementsByClassName('after-copy-text')[0]
+
+    // Remove the ugly focus brorder around the btn after clicking it
+    btn.blur()
+
+    navigator.clipboard.writeText(text_to_copy)
+
+    el_to_show_after_copy.classList.remove('d-none')
+  })
+}
+
+function copy_api_key(event) {
+  const btn = event.currentTarget
+  btn.blur() // Remove the focus around the button after copying
+  navigator.clipboard.writeText(btn.parentElement.firstElementChild.innerText)
+  btn.parentElement.lastElementChild.classList.remove('d-none')
+}
+
+
+// Activate all popovers except those for job info and security event logs
+$(document).ready(function(){
+  $('[data-toggle="popover"]').popover();
+});
+
+// This function is used in the picklist.html file, to display the names
+// correctly, if it contains chars like ' or " 
+const parser = new DOMParser()
+function htmlDecode(input) {
+  let doc = parser.parseFromString(input, "text/html")
+  return doc.documentElement.textContent
+}

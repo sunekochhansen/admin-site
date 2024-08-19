@@ -1,5 +1,4 @@
 {% load i18n %}
-{% language request.user.bibos_profile.language %}
 <!DOCTYPE html>
 <html lang="da">
 <head>
@@ -14,10 +13,12 @@
   <script src="/static/js/jquery.min.js"></script>
   <script src="/static/js/custom.js"></script>
   <script src="https://code.jquery.com/ui/1.13.1/jquery-ui.js"></script>
+  <script src="{% url 'javascript-catalog' %}"></script>
   {% block head_javascripts %}{% endblock %}
 </head>
 
-<body class="{% block page_type_class %}{% endblock %}">
+<!-- HTMX setup (hx-headers) -->
+<body class="{% block page_type_class %}{% endblock %}" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 
   <div id="adm-wrapper">
     <div id="adm-globalnav">
@@ -48,7 +49,8 @@
   <script src="/static/js/bootstrap-table.min.js"></script>
   <script src="/static/js/bootstrap-table-da-DK.min.js"></script>
   <script src="/static/js/bootstrap.bundle.min.js"></script>
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.4"></script>
   {% block javascripts %}{% endblock %}
 </body>
 </html>
-{% endlanguage %}

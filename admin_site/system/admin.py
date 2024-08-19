@@ -4,33 +4,42 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils import timezone
 from django.utils.html import format_html_join, escape, mark_safe
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from django.urls import reverse
 
 from system.models import (
+    APIKey,
     AssociatedScript,
     AssociatedScriptParameter,
     Batch,
     BatchParameter,
-    Changelog,
-    ChangelogComment,
-    ChangelogTag,
     Citizen,
     Configuration,
     ConfigurationEntry,
+    Customer,
     FeaturePermission,
     ImageVersion,
     Input,
     Job,
+    LoginLog,
+    EventRuleServer,
+    Product,
     PC,
     PCGroup,
-    WakeWeekPlan,
-    WakeChangeEvent,
     Script,
     ScriptTag,
     SecurityEvent,
     SecurityProblem,
     Site,
+    WakeChangeEvent,
+    WakeWeekPlan,
+    Country,
+)
+
+from changelog.models import (
+    Changelog,
+    ChangelogComment,
+    ChangelogTag,
 )
 
 
@@ -55,8 +64,20 @@ class PCInlineForConfiguration(admin.TabularInline):
 
 
 class ConfigurationAdmin(admin.ModelAdmin):
-    fields = ["name"]
-    search_fields = ("name",)
+    def sites(self, obj):
+        return list(obj.site_set.all())
+
+    def pcgroups(self, obj):
+        return list(obj.pcgroup_set.all())
+
+    def pcs(self, obj):
+        return list(obj.pc_set.all())
+
+    list_display = ["id", "name", "pcs", "pcgroups", "sites"]
+    search_fields = (
+        "id",
+        "name",
+    )
     inlines = [
         ConfigurationEntryInline,
         SiteInlineForConfiguration,
@@ -146,7 +167,7 @@ class ScriptAdmin(admin.ModelAdmin):
 
     def jobs_per_site_for_the_last_year(self, obj):
         now = timezone.now()
-        a_year_ago = now.replace(year=now.year - 1)
+        a_year_ago = now - timezone.timedelta(days=365)
 
         sites = Site.objects.filter(
             batches__script=obj, batches__jobs__started__gte=a_year_ago
@@ -188,25 +209,101 @@ class PCInlineForSiteAdmin(admin.TabularInline):
         return False
 
 
-class FeaturePermissionInlineForSiteAdmin(admin.TabularInline):
-    model = FeaturePermission.sites.through
+class FeaturePermissionInlineForCustomerAdmin(admin.TabularInline):
+    model = FeaturePermission.customers.through
     extra = 0
 
 
-class SiteAdmin(admin.ModelAdmin):
+class CustomerInlineForCountryAdmin(admin.TabularInline):
+    model = Customer
+    fields = ("name", "is_test")
+    extra = 0
+
+    def has_add_permission(self, request, obj):
+        return False
+
+    def has_delete_permission(self, request, obj):
+        return False
+
+    def has_change_permission(self, request, obj):
+        return False
+
+
+class SiteInlineForCustomerAdmin(admin.TabularInline):
+    model = Site
+    fields = ("name", "uid")
+    extra = 0
+
+    def has_add_permission(self, request, obj):
+        return False
+
+    def has_delete_permission(self, request, obj):
+        return False
+
+    def has_change_permission(self, request, obj):
+        return False
+
+
+class CustomerAdmin(admin.ModelAdmin):
+    list_filter = ("country",)
     list_display = (
         "name",
+        "is_test",
         "number_of_computers",
-        "created",
         "number_of_borgerpc_computers",
         "number_of_kioskpc_computers",
         "paid_for_access_until",
+        "feature_permissions",
     )
     search_fields = ("name",)
     inlines = (
-        FeaturePermissionInlineForSiteAdmin,
-        PCInlineForSiteAdmin,
+        SiteInlineForCustomerAdmin,
+        FeaturePermissionInlineForCustomerAdmin,
     )
+
+    def number_of_computers(self, obj):
+        computers_count = PC.objects.filter(site__customer=obj).count()
+        return computers_count
+
+    def number_of_borgerpc_computers(self, obj):
+        borgerpc_computers_count = (
+            PC.objects.filter(site__in=obj.sites.all())
+            .filter(configuration__entries__value="os2borgerpc")
+            .count()
+        )
+
+        return borgerpc_computers_count
+
+    def number_of_kioskpc_computers(self, obj):
+        kioskpc_computers_count = (
+            PC.objects.filter(site__in=obj.sites.all())
+            .filter(configuration__entries__value="os2borgerpc kiosk")
+            .count()
+        )
+
+        return kioskpc_computers_count
+
+    def feature_permissions(self, obj):
+        return list(obj.feature_permission.all())
+
+    number_of_computers.short_description = _("Number of computers")
+    feature_permissions.short_description = _("Feature permissions")
+    number_of_kioskpc_computers.short_description = _("Number of KioskPC computers")
+    number_of_borgerpc_computers.short_description = _("Number of BorgerPC computers")
+
+
+class SiteAdmin(admin.ModelAdmin):
+    list_filter = ("customer",)
+    list_display = (
+        "name",
+        "uid",
+        "created",
+        "number_of_computers",
+        "number_of_borgerpc_computers",
+        "number_of_kioskpc_computers",
+    )
+    search_fields = ("name",)
+    inlines = (PCInlineForSiteAdmin,)
     readonly_fields = ("created",)
 
     def number_of_borgerpc_computers(self, obj):
@@ -231,17 +328,33 @@ class SiteAdmin(admin.ModelAdmin):
         return obj.pcs.count()
 
     number_of_computers.short_description = _("Number of computers")
-    number_of_kioskpc_computers.short_description = _("Number of KioskPC computers")
-    number_of_borgerpc_computers.short_description = _("Number of BorgerPC computers")
+
+
+class LoginLogAdmin(admin.ModelAdmin):
+    list_display = ("identifier", "date", "login_time", "logout_time")
+    list_filter = ("date",)
+    search_fields = ("identifier", "date")
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(site__in=request.user.user_profile.sites.all())
 
 
 class FeaturePermissionAdmin(admin.ModelAdmin):
+    def customers_with_access(self, obj):
+        return list(obj.customers.all())
+
     list_display = (
         "name",
         "uid",
+        "customers_with_access",
     )
     list_filter = ("name",)
     search_fields = ("name", "uid")
+
+    customers_with_access.short_description = _("customers with access")
 
 
 class PCAdmin(admin.ModelAdmin):
@@ -279,7 +392,7 @@ class PCAdmin(admin.ModelAdmin):
         )
         # PC UID is generated from a hashed MAC address
         # so by hashing the input we allow searching by MAC address.
-        maybe_uid_hash = md5(search_term.encode("utf-8")).hexdigest()
+        maybe_uid_hash = md5(search_term.encode("utf-8").lower()).hexdigest()
         queryset |= self.model.objects.filter(uid=maybe_uid_hash)
         return queryset, may_have_duplicates
 
@@ -296,7 +409,17 @@ class JobAdmin(admin.ModelAdmin):
     )
     list_filter = ("status",)
     search_fields = ("batch__script__name", "user__username", "pc__name")
-    readonly_fields = ("created", "started", "finished")
+    readonly_fields = ("created", "started", "finished", "batch", "pc")
+
+
+class CountryAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "pk",
+    )
+    list_filter = ("name",)
+    search_fields = ("name", "pk")
+    inlines = [CustomerInlineForCountryAdmin]
 
 
 class ScriptTagAdmin(admin.ModelAdmin):
@@ -304,16 +427,28 @@ class ScriptTagAdmin(admin.ModelAdmin):
 
 
 class ImageVersionAdmin(admin.ModelAdmin):
-    list_display = ("platform", "image_version", "os", "release_date")
+    list_display = ("product", "image_version", "os", "release_date")
 
 
 class SecurityProblemAdmin(admin.ModelAdmin):
     list_display = ("name", "site", "level", "security_script")
 
 
+class EventRuleServerAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "site",
+        "level",
+        "monitor_period_start",
+        "monitor_period_end",
+        "maximum_offline_period",
+    )
+
+
 class SecurityEventAdmin(admin.ModelAdmin):
     list_display = (
         "problem",
+        "event_rule_server",
         "get_site",
         "occurred_time",
         "reported_time",
@@ -372,15 +507,11 @@ class CitizenAdmin(admin.ModelAdmin):
 class ChangelogAdmin(admin.ModelAdmin):
     list_display = (
         "title",
-        "author",
-        "version",
+        "published",
         "created",
         "updated",
     )
-    search_fields = (
-        "title",
-        "version",
-    )
+    search_fields = ("title",)
     filter_horizontal = ("tags",)
 
 
@@ -408,9 +539,26 @@ class WakeWeekPlanAdmin(admin.ModelAdmin):
         "name",
         "enabled",
         "site",
+        "sleep_state",
+        "monday_on",
+        "monday_off",
+        "tuesday_on",
+        "tuesday_off",
+        "wednesday_on",
+        "wednesday_off",
+        "thursday_on",
+        "thursday_off",
+        "friday_on",
+        "friday_off",
+        "saturday_on",
+        "saturday_off",
+        "sunday_on",
+        "sunday_off",
     )
     inlines = [PCGroupInline]
     filter_horizontal = ("wake_change_events",)
+    list_filter = ("site",)
+    search_fields = ("name",)
 
 
 class WakeWeekPlanInline(admin.TabularInline):
@@ -429,10 +577,32 @@ class WakeChangeEventAdmin(admin.ModelAdmin):
         "site",
     )
     inlines = [WakeWeekPlanInline]
+    list_filter = ("site",)
+
+
+class APIKeyAdmin(admin.ModelAdmin):
+    list_display = ("site", "key", "description", "created")
+
+
+class ImageVersionInline(admin.TabularInline):
+    model = ImageVersion
+    extra = 0
+
+    # Just show the image versions, no need to have them editable from here
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class ProductAdmin(admin.ModelAdmin):
+    inlines = [ImageVersionInline]
 
 
 ar = admin.site.register
 
+ar(APIKey, APIKeyAdmin)
 ar(AssociatedScript, AssociatedScriptAdmin)
 ar(AssociatedScriptParameter, AssociatedScriptParameterAdmin)
 ar(Batch, BatchAdmin)
@@ -442,15 +612,20 @@ ar(ChangelogComment, ChangelogCommentAdmin)
 ar(ChangelogTag, ChangelogTagAdmin)
 ar(Citizen, CitizenAdmin)
 ar(Configuration, ConfigurationAdmin)
+ar(Country, CountryAdmin)
+ar(Customer, CustomerAdmin)
+ar(EventRuleServer, EventRuleServerAdmin)
+ar(FeaturePermission, FeaturePermissionAdmin)
 ar(ImageVersion, ImageVersionAdmin)
 ar(Job, JobAdmin)
+ar(LoginLog, LoginLogAdmin)
 ar(PC, PCAdmin)
 ar(PCGroup, PCGroupAdmin)
-ar(WakeChangeEvent, WakeChangeEventAdmin)
-ar(WakeWeekPlan, WakeWeekPlanAdmin)
+ar(Product, ProductAdmin)
 ar(Script, ScriptAdmin)
 ar(ScriptTag, ScriptTagAdmin)
 ar(SecurityEvent, SecurityEventAdmin)
 ar(SecurityProblem, SecurityProblemAdmin)
 ar(Site, SiteAdmin)
-ar(FeaturePermission, FeaturePermissionAdmin)
+ar(WakeChangeEvent, WakeChangeEventAdmin)
+ar(WakeWeekPlan, WakeWeekPlanAdmin)

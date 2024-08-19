@@ -19,7 +19,6 @@ LABEL org.opencontainers.image.title="OS2borgerPC" \
       org.opencontainers.image.source="https://github.com/OS2borgerPC/admin-site"
 
 ENV PYTHONUNBUFFERED=1 \
-  BPC_SYSTEM_CONFIG_PATH=/code/docker/docker-settings.ini \
   BPC_USER_CONFIG_PATH=/user-settings.ini \
   PYTHONPATH=/code/admin_site/:$PYTHONPATH\
   DJANGO_SETTINGS_MODULE=os2borgerpc_admin.settings
@@ -51,15 +50,32 @@ VOLUME /media
 
 WORKDIR /code/
 
+COPY VERSION /code/VERSION
+
 # Install requirements.
 COPY admin_site/requirements.txt /code/admin_site/requirements.txt
 RUN pip3 install --no-cache-dir -r  admin_site/requirements.txt
+
+# Install supercronic
+ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.25/supercronic-linux-amd64 \
+    SUPERCRONIC=supercronic-linux-amd64 \
+    SUPERCRONIC_SHA1SUM=642f4f5a2b67f3400b5ea71ff24f18c0a7d77d49
+
+# hadolint ignore=DL4006
+RUN curl -fsSLO "$SUPERCRONIC_URL" \
+ && echo "${SUPERCRONIC_SHA1SUM}  ${SUPERCRONIC}" | sha1sum -c - \
+ && chmod +x "$SUPERCRONIC" \
+ && mv "$SUPERCRONIC" "/usr/local/bin/${SUPERCRONIC}" \
+ && ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
 
 # Copy backend code.
 COPY README.rst .
 COPY LICENSE .
 COPY docker ./docker
 COPY admin_site ./admin_site
+
+# Copy crontab-file
+COPY crontab /crontab
 
 WORKDIR /code/admin_site
 
@@ -82,6 +98,7 @@ COPY --from=frontend \
 # consider it a bug. See `insecure-settings.ini` for a detailed explanation.
 RUN set -ex \
   && BPC_USER_CONFIG_PATH=/code/docker/insecure-settings.ini python ./manage.py collectstatic --no-input --clear \
+  && BPC_USER_CONFIG_PATH=/code/docker/insecure-settings.ini python ./manage.py compilemessages \
   && rm /code/docker/insecure-settings.ini
 
 # Run the server as the bpc user on port 9999

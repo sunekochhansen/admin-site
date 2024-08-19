@@ -3,17 +3,13 @@
 {% load i18n %}
 
 {% block specific_title %}
-{% translate "Security Events" %}
+{% translate "Events" %}
 {% endblock %}
 
 {% block head_javascripts %}
   <script type="text/javascript">
        var security_event_search_url = "{% url 'security_event_search' site.uid %}"
        var security_events_update_url = "{% url 'security_events_update' site.uid %}"
-       /* This cookie is used to get the correct language for event severity
-       and event status */
-       var lang = "{{request.user.bibos_profile.language}}"
-       document.cookie = "django_language="+lang;
   </script>
   <script type="text/javascript" src="/static/js/security_events_list.js"></script>
 {% endblock %}
@@ -68,7 +64,7 @@
 {% endblock %}
 
 {% block specific_content %}
-<!-- Security Event Template -->
+<!-- Event Template -->
   <div class="template-container">
    <table class="table">
     <tbody id="securityeventitem-template">
@@ -92,7 +88,7 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="handle_events_modal_label">{% translate "Edit Security Events" %}</h5>
+        <h5 class="modal-title" id="handle_events_modal_label">{% translate "Edit Events" %}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -115,9 +111,9 @@
           <th><input type="checkbox" id="all_events_toggle" autocomplete="off"/></th>
           <th>{% translate "Level" %}</th>
           {% translate "Rule" as rule %}
-          {% include 'widgets/orderby_th_ajax.html' with label=rule action="BibOS.SecurityEventList.orderby('problem__name')" slug='warning' %}
+          {% include 'widgets/orderby_th_ajax.html' with label=rule action="BibOS.SecurityEventList.orderby('name')" slug='warning' %}
           <th>{% translate "Info" %}</th>
-          <th>{% translate "Device" %}</th>
+          <th>{% translate "Computer" %}</th>
           <th>{% translate "Incident time" %}</th>
           <th>{% translate "Time of receipt" %}</th>
           <th>{% translate "Status" %}</th>

@@ -1,0 +1,50 @@
+{% extends "site_with_navigation.html" %}
+{% load crispy_forms_tags %}
+{% load i18n %}
+{% load custom_tags %}
+
+{% block specific_title %}
+{% translate "Delete offline rule" %}: {{ eventruleserver.name }}
+{% endblock %}
+
+{% block specific_content %}
+  <div class="container-fluid main">
+    <div class="alert alert-danger">
+      <h3>{% translate "Note" %}</h3>
+      <ul>
+        <li>
+          {% translate "Offline Rule"|bold as offline_rule %}
+          {% translate "Events"|bold as events %}
+          {% blocktranslate trimmed %}
+          If a {{offline_rule}} is deleted, the related {{events}} will also be deleted.
+          {% endblocktranslate %}
+        </li>
+        <li>
+          {% translate "Groups"|bold as groups %}
+          {% translate "Email recipients"|bold as email_recipients %}
+          {% translate "the Offline Rule"|bold as the_offline_rule %}
+          {% blocktranslate trimmed %}
+          Associated {{groups}} and {{email_recipients}} will be removed from {{the_offline_rule}}.
+          {% endblocktranslate %}
+        </li>
+        <li>
+          {% translate "The Groups"|bold as the_groups %}
+          {% translate "the Email recipients"|bold as the_email_recipients %}
+          {% translate "NOT" as NOT %}
+          {% blocktranslate trimmed %}
+          {{the_groups}} and {{the_email_recipients}} themselves will {{NOT}} be deleted.
+          {% endblocktranslate %}
+        </li>
+      </ul>
+    </div>
+    <p>{% translate "Are you sure you wish to delete the Offline Rule" %}
+    <strong style="font-size: 1.25em;">{{ eventruleserver.name }}</strong>?</p>
+
+    <form action="" method="post">
+      {% csrf_token %}
+      {{ form|crispy }}
+      <input class="btn btn-danger" type="submit" value="{% translate 'Confirm deletion' %}">
+      <a class="btn btn-secondary" href="javascript:history.go(-1)">{% translate "Cancel" %}</a>
+    </form>
+  </div>
+{% endblock %}

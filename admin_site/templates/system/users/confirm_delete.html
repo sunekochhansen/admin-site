@@ -2,18 +2,22 @@
 {% load i18n %}
 
 {% block specific_title %}
-{% translate "Users" %}
+{% translate "Delete user" %}
 {% endblock %}
 
 {% block specific_content %}
-  
+
   <div class="container-fluid main sublevelmain">
       <h2 class="divideheader">{% translate "Delete user" %}: <em>{{ selected_user.username }}</em></h2>
       <div>
-        <form action="{% url 'delete_user' site.uid selected_user.username %}" name="update_user_form" id="update_user_form" method="post">
+        <form action="{% url 'user_delete' site.uid selected_user.username %}" name="update_user_form" id="update_user_form" method="post">
           {% csrf_token %}
           <p>
-            {% translate "Are you sure you want to delete the user" %}<br>
+            {% if selected_user.user_profile.sitemembership_set.count > 1 %}
+              {% translate "Are you sure you want to remove this user from the site " %}{{site.name}}:<br>
+            {% else %}
+              {% translate "Are you sure you want to delete the user" %}<br>
+            {% endif %}
             <strong>{{ selected_user.username }}{% if selected_user.email %} &lt;{{ selected_user.email }}&gt;{% endif %}</strong>?
           </p>
           <input class="btn btn-danger me-3" type="submit" value="{% translate 'Confirm deletion' %}">

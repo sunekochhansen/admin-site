@@ -1,3 +1,180 @@
+Version 6.0.0, June 18, 2024
+----------------------------
+
+- Customers can now create their own sites, via an added user type called called "customer admin"
+- Site overview: Add various stats, indicating the number of PCs that are BorgerPC's, Kiosk PC's, activated, online - as well as the number of PCs for each Ubuntu version
+- Status: Add various stats, indicating the number of BorgerPC's, Kiosk PC's as well as the number of PCs for each Ubuntu version
+- General documentation update
+- Improve the layout of the Images and Jobs pages to work better at lower resolutions
+- Make page notifications work consistently and change to using bootstrap's instead of something homemade
+- PC: Remove an invisible link from a PC to its Security Events
+- Jobs: Fix bug where arguments for newly restarted Jobs wasn't shown
+- Add weekly cleanup of old Security events and Citizen objects
+- Prevent server error when attempting to register a PC with an invalid site name
+
+Version 5.28.0, April 18, 2024
+------------------------------
+
+- Fix CVE-2024-1135 (gunicorn) by updating it to 22.0.0
+- Make choices input parameter type work in the policy list
+- Various updates to changelogs (layouting, draft status, remove a few barely used fields)
+
+Version 5.27.0, April 10, 2024
+------------------------------
+
+- Fix bug that prevented jobs related to scripts requiring feature permissions from showing correctly
+- Update to Django version 4.2.11
+- Add new input parameter type: choices, which give a list of choices
+- Make makemessages use the no-obsolete flag
+
+Version 5.26.0, April 08, 2024
+------------------------------
+
+- Implement the first part of a change intended to restrict scripts to
+  being run on the products that they were intended for
+- Add integration with Quria to support login on OS2borgerPC via Quria credentials.
+  This integration uses the same Easy!Appointments integration as SMS login.
+  The Quria integration is implemented via a general citizen login rpc-function
+  that can be reused for future and existing login integrations
+- Update Easy!Appointments integration to support varying login duration and quarantine duration
+  per computer as well as the option to allow idle logins (idle logins refer to citizens being able
+  to login on a computer that requires booking without having a booking if the time until the start
+  of the next booking is greater than the login duration
+- Update SMS login logic to support phone numbers with unlimited access
+- Use checkboxes when adding groups/pcs/etc. to picklists thus allowing
+  multiple simultaneous selections
+- Show feature permissions on site overview in backend
+- Fix global script redirect to work correctly for security scripts
+- Add support for hidden users that can only be seen by superusers
+- Update requirements
+- Add readthedocs.yaml
+
+Version 5.25.0, March 04, 2024
+------------------------------
+
+- Fix picklists handling displaying html chars (e.g. quotes) correctly
+- Fix leap year bug in backend
+- Hide country and testsite from site settings
+- Delete the old primitive API
+
+Version 5.24.0, February 27, 2024
+---------------------------------
+
+- Fix minor bug in sms login integration
+- Add country object related to sites
+- Add is_testsite attribute to sites
+- Sort site_list for superusers based on country and test status
+- Make first group creation use the same form as creation of later groups
+
+Version 5.23.0, February 15, 2024
+---------------------------------
+
+- Update rpc.py functions to prepare for removing outdated logic later
+- Place .mo files in .gitignore and have the Dockerfile compile them
+- Update the handling of security events to accept 3 or 4 parameters and
+  only generate logger exceptions during development and testing
+- Add final translations. Everything but the database should now be translated
+- Add information regarding supervisors on the groups page
+- Rename "Versions" to "Images"
+- Change user deletion logic so that a user with access to multiple sites
+  will only be deleted from one site at a time
+- Update to markdownx version 4.0.7
+- Fix bug preventing scripts that require feature permissions from being associated
+- Fix bug causing scripts that require feature permissions to be shown under security scripts
+- Fix bug causing script parameter names with " to be displayed incorrectly
+
+Version 5.22.2, December 6, 2023
+--------------------------------
+
+- Allow arbitrary URLs for Easy!Appointments
+
+Version 5.22.1, November 30, 2023
+---------------------------------
+
+- Minor adjustments to integration with SMSTeknik and Easy!Appointments
+
+Version 5.22.0, November 28, 2023
+---------------------------------
+
+- Add integration with SMSTeknik and Easy!Appointments to support login on OS2borgerPC's via sms verification
+  with or without booking via Easy!Appointments required
+- Improve the error message when reregistering a PC. Message now includes the name of the already registered PC
+- Generalize feature permission for scripts
+- Add sites to the /admin overview of feature permissions
+- Add site name to cicero validation logging
+
+Version 5.21.0, Oktober 23, 2023
+--------------------------------
+
+- Add a new Django Ninja API, available at /api/, a page to generate API keys, and related documentation
+- Fix bug: Scripts with new checkbox parameters now get a valid default value in the places where its associated: True
+- Default to rerunning associated scripts with changed parameters on new sites
+- Make it possible to rerun all completed jobs, not only those that failed
+- Add FAQ for commonly asked auditor questions
+- UX improvements on the two factor for superuser page
+- Remove sorting on the jobs list for a single computer (it didn't work anyway)
+- Fix bug: Updated configuration values are now reflected immediately in the list,
+  instead of having to press "Save changes" first.
+
+Version 5.20.0, September 18, 2023
+----------------------------------
+
+- Expand Security Event / Security Rule system to cover other types of events - in this case specifically an event for when the PC's in
+  a group are offline for longer than a specified period of time.
+- Added functionality to add Supervisors to a Group who receive the notification instead of the users attached to the
+  Security Problem. This makes it possible to reuse a SecurityProblem across locations when you want different recipients for
+  the alerts per location.
+- Updated the Cicero integration to support preventing simultaneous logins by the same library user and store username/password
+  for the Cicero API in the database per site
+
+Version 5.19.0, September 5, 2023
+---------------------------------
+
+- Fix wake plan not being sent/removed when adding/removing PC to/from group from PCUpdate
+- Use translations in Site documentation and update documentation
+- Fix server error when trying to access DeleteView for a nonexistent user, group, PC or wake plan
+- Add button to copy job log
+- Make job log show chosen arguments for new jobs
+- Make changelog its own app
+- Avoid saving PC MAC and UID as configurations. Show PC MAC attribute under details
+- Remove modal when creating user, instead reuse template used for UserUpdate
+- Make mandatory parameters required by the browser when editing a policy script
+- Prevent saving a script with an unnamed input, which caused a server error
+- Minor improvements to /admin
+
+Version 5.18.0, July 6, 2023
+----------------------------
+
+- Remove execute permissions from files that don't need it
+- Policy Scripts: Add functionality to optionally rerun policy scripts when their parameters are changed.
+- SecurityProblems: Use ID instead of UID. Remove UID.
+- Fix server error when trying to access a user from another site
+- Remove gateway functionality
+- Minor improvements to /admin
+- Simplify how settings are loaded
+
+Version 5.17.0, June 6, 2023
+----------------------------
+
+- Update Django from 3.2.17 -> 4.2.1
+- Fix bug in wake plan validation
+- Create new users with the same language set as yourself by default
+
+Version 5.16.0, May 30, 2023
+----------------------------
+
+- Add two-factor login for the admin-site
+- Restore old links to installation guide and wake plan user guide
+
+Version 5.15.0, May 25, 2023
+----------------------------
+
+- Improved display of image version in backend
+- Link to different pdf files based on chosen language
+- Add error message when attempting to check in with an unregistered machine
+- English error message when attempting to register an already registered machine
+- Translate text set via javascript
+
 Version 5.14.1, May 8, 2023
 ---------------------------
 

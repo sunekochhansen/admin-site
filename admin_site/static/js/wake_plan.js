@@ -12,13 +12,14 @@ function weekDayOn(el, on) {
   const END_TIME_INPUT = el.parentElement.parentElement.children[5].firstElementChild
   const ON_OFF_TEXT = el.parentElement.parentElement.children[2].firstElementChild
 
+
   if (on) {
     START_TIME.style.visibility = "visible"
     START_TIME_INPUT.setAttribute('required',true)
     SEPARATOR.style.visibility = "visible"
     END_TIME.style.visibility = "visible"
     END_TIME_INPUT.setAttribute('required',true)
-    ON_OFF_TEXT.innerText = "Tændt"
+    ON_OFF_TEXT.innerText = gettext("On")
 
   }
   else {
@@ -27,7 +28,7 @@ function weekDayOn(el, on) {
     SEPARATOR.style.visibility = "hidden"
     END_TIME.style.visibility = "hidden"
     END_TIME_INPUT.removeAttribute('required')
-    ON_OFF_TEXT.innerText = "Slukket"
+    ON_OFF_TEXT.innerText = gettext("Off")
   }
 }
 
@@ -63,10 +64,11 @@ const CHECKBOX_ENABLED = document.getElementById("id_enabled")
 const CHECKBOX_ENABLED_LABEL = document.getElementById("id_enabled_label")
 if (CHECKBOX_ENABLED) { // Don't attempt to set this listener if we're on a subpage where this doesn't exist
   function setPlanStateText(on) {
+
     if (on) {
-      CHECKBOX_ENABLED_LABEL.innerText = "Aktiv"
+      CHECKBOX_ENABLED_LABEL.innerText = gettext("Active")
     }
-    else CHECKBOX_ENABLED_LABEL.innerText = "Inaktiv"
+    else CHECKBOX_ENABLED_LABEL.innerText = gettext("Inactive")
   }
 
   CHECKBOX_ENABLED.addEventListener('click', function() {
@@ -76,10 +78,6 @@ if (CHECKBOX_ENABLED) { // Don't attempt to set this listener if we're on a subp
 }
 
 // TODO: If a new wakechangeevent is saved, set a cookie with its ID and name, and then this page could have a focus listener that add it to the picklist as an option?
-// Activate the info button popover
-$(document).ready(function(){
-  $('[data-toggle="popover"]').popover();
-});
 
 // Store current plan_id in SessionStorage
 sessionStorage.setItem(
@@ -225,7 +223,6 @@ addEventListener('keydown', evt => {
 // A function to clear the session storage storing what a wake plan looks like to be able to navigate to wake
 // change events from a wake plan without losing wake plan state
 function removeDataFromSessionStorage() {
-
   sessionStorage.setItem('going_to_wake_change_events', 'false')
 
   sessionStorage.setItem('going_back_to_wake_plan', 'false')
@@ -300,12 +297,3 @@ document.getElementById('cancel-button').addEventListener("click", function(even
 //   })
 //
 // })()
-//
-// document.getElementById('submit-button').addEventListener("click", function(event){
-//   removeDataFromSessionStorage()
-// })
-//
-// document.getElementById('cancel-button').addEventListener("click", function(event){
-//   removeDataFromSessionStorage()
-//   location.reload(true) // true means it reloads from server, false will reload from cache
-// })

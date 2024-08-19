@@ -40,10 +40,53 @@ hr {
     color: $warning;
 }
 
-.picklist-counter-badge  {
+.pick-list-counter-badge  {
+  color: black;
   font-size: 1.0rem;
+}
+
+.pick-list .list-group-item:active {
+    background-color: transparent;
+}
+
+li .dropdown-item:active {
+    background-color: transparent;
+    color: black
+}
+
+.pick-list .btn:focus {
+  box-shadow: none;
 }
 
 #pc_update_form .basic-info {
   font-size: 1.20em;
+}
+
+#monitor-period input {
+  display: inline;
+  width: 100px;
+}
+
+/* Site list */
+.customer {
+  background: $gray-100;
+  border: 1px solid $gray-300;
+  padding: 10px;
+}
+
+.customer small {
+  position: relative;
+  top: -31px;
+}
+
+.sites .container {
+  max-width: 1700px;
+}
+
+.site-btns {
+  background: $gray-200;
+}
+
+.customer .btn-group:hover {
+  background: $gray-300
 }

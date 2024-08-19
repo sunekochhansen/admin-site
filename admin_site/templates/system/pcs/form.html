@@ -17,7 +17,7 @@
     <li>{% translate "There are no computers" %}</li>
   {% endif %}
   {% for pc in pc_list %}
-    <li class="{% ifequal pc selected_pc %}active{% endifequal %}">
+    <li class="{% if pc == selected_pc %}active{% endif %}">
       {% comment %} Add deletion to every row: <a href="/site/{{ site.url }}/computers/{{ pc.uid }}/delete/" title="{% translate 'Delete computer' %}"></a>{% endcomment %}
       <a class="item-list-link" id="{{pc.uid}}" href="/site/{{ site.url }}/computers/{{ pc.uid }}">
         {{ pc.name }}
@@ -25,11 +25,11 @@
         {% if not pc.is_activated %}
           <span class="badge bg-danger">{% translate "Not activated" %}</span>
         {% endif %}
-      {% ifequal pc selected_pc %}
+      {% if pc == selected_pc %}
         <a class="item-list-deletable material-icons" href="/site/{{ site.url }}/computers/{{ pc.uid }}/delete/" title="{% translate 'Delete computer' %}">
           clear
         </a>
-      {% endifequal %}
+      {% endif%}
     </li>
   {% endfor %}
 </ul>
@@ -40,23 +40,16 @@
 
     <h2 class="divideheader">
       {% translate "Details about" %} <em>{{ selected_pc.name }}</em>
-      {% if selected_pc.security_events.count > 0 %}
-      <a href="{% url 'security_event_pc' slug=site.url pc_uid=pc.uid %}" title=" {% translate 'See events for this computer' %}">
-        <span class="badge badge-important">
-          <icon class="{% if has_security_events %}icon-fire{% else %}icon-ok{% endif %} icon-white"></icon>
-        </span>
-      </a>
-      {% endif %}
     </h2>
 
     {% include 'notification.html' %}
 
     <form name="pc_update_form" id="pc_update_form" action="{% url 'computer' site.uid selected_pc.uid %}" method="post">
       <div class="basic-info">
-        <span class="badge bg-secondary">
+        <span class="badge bg-secondary text-dark">
           {% translate "Registered" %}: {{ pc.created }}
         </span>
-        <span class="badge bg-secondary ms-3">
+        <span class="badge bg-secondary ms-3 text-dark">
           {% translate "Last check-in" %}:
           {% if selected_pc.last_seen %}
             {{ selected_pc.last_seen|timesince }} {% translate "ago" %}
@@ -64,8 +57,8 @@
             {% translate "Never" %}
           {% endif %}
         </span>
-        <span class="badge bg-secondary ms-3">
-          {% translate "Last security event received" %}:
+        <span class="badge bg-secondary ms-3 text-dark">
+          {% translate "Last event received" %}:
           {% if security_event %}
             {{ security_event.reported_time|timesince }} {% translate "ago" %}
           {% else %}
@@ -79,13 +72,13 @@
       <!-- The three tabs on the page: -->
       <ul class="nav nav-tabs" role="tablist" id="pc-tabs">
         <li class="nav-item" role="presentation">
-          <a class="nav-link active" id="details-tab" href="#details" role="tab" aria-controls="details" aria-selected="true">{% translate "Details" %}</a>
+          <a class="nav-link active" id="details-tab" href="#details" role="tab" data-bs-toggle="tab" aria-controls="details" aria-selected="true">{% translate "Details" %}</a>
         </li>
         <li class="nav-item" role="presentation">
-          <a class="nav-link" id="jobs-tab" href="#jobs" role="tab" aria-controls="jobs" aria-selected="false">{% translate "Job history" %}</a>
+          <a class="nav-link" id="jobs-tab" href="#jobs" role="tab" data-bs-toggle="tab" aria-controls="jobs" aria-selected="false">{% translate "Job history" %}</a>
         </li>
         <li class="nav-item" role="presentation">
-          <a class="nav-link" id="configs-tabs" href="#configs" role="tab" aria-controls="configs" aria-selected="false">{% translate "Configurations" %}</a>
+          <a class="nav-link" id="configs-tabs" href="#configs" role="tab" data-bs-toggle="tab" aria-controls="configs" aria-selected="false">{% translate "Configurations" %}</a>
         </li>
       </ul>
 
@@ -93,10 +86,11 @@
       <div class="tab-content">
 
         <div id="details" class="tabcontent tab-pane fade show active" role="tabpanel" aria-labelledby="details-tab">
-      
+
           <div class="row gx-5">
 
             <fieldset class="col-12 col-lg-6">
+                {{ form.mac|as_crispy_field }}
                 {{ form.uid|as_crispy_field }}
                 {{ form.name|as_crispy_field }}
                 {{ form.description|as_crispy_field }}
@@ -113,14 +107,15 @@
               {{ form.pc_groups.errors }}
               <div class="clearfix">
                 <label class="mb-2">{% translate "Groups the computer is a member of" %}</label>
-                <span class="badge bg-secondary picklist-counter-badge" style="float: right;">
+                <span class="badge bg-secondary pick-list-counter-badge" style="float: right;">
                   <span class="material-icons px-1">queue</span>
                   <span id="total-pc_groups"></span>
                 </span>
               </div>
               {% translate "Add computer to group" as add_c %}
               {% translate "Remove computer from group" as remove_c %}
-              {% include 'widgets/picklist.html' with submit_name='pc_groups' selected_list=selected_groups available_list=available_groups identifier='gruppe' add_text=add_c remove_text=remove_c site_url=site.uid target_section='groups' %}
+              {% translate "None chosen" as empty_t %}
+              {% include 'widgets/picklist.html' with submit_name='pc_groups' selected_list=selected_groups available_list=available_groups identifier='gruppe' add_text=add_c remove_text=remove_c empty_text=empty_t site_url=site.uid target_section='groups' %}
 
             </fieldset>
           </div>
@@ -145,29 +140,24 @@
           <table id="computer_jobs_table" class="table jobtable">
             <thead>
               <tr>
-                {% translate "Script" as script_label %}
-                {% translate "Created" as created_label %}
-                {% translate "Started" as started_label %}
-                {% translate "Finished" as finished_label %}
-                {% translate "Status" as status_label %}
-                {% include 'widgets/orderby_th_reload.html' with key='batch__script__name' label=script_label anchor='#jobs' %}
-                {% include 'widgets/orderby_th_reload.html' with key='created' label=created_label anchor='#jobs' %}
-                {% include 'widgets/orderby_th_reload.html' with key='started' label=started_label anchor='#jobs' %}
-                {% include 'widgets/orderby_th_reload.html' with key='finished' label=finished_label anchor='#jobs' %}
-                {% include 'widgets/orderby_th_reload.html' with key='status' label=status_label anchor='#jobs' %}
-                <th></th> {# Job-info-button #}
+                <th>{% translate "Script" %}</th>
+                <th>{% translate "Created" %}</th>
+                <th>{% translate "Started" %}</th>
+                <th>{% translate "Finished" %}</th>
+                <th>{% translate "Status" %}</th>
+                <th>{% translate "Info" %}</th> {# Job-info-button #}
               </tr>
             </thead>
             {% for job in joblist %}
             <tr class="muted">
-              <td class="{% ifequal orderby_key 'batch__script__name' %}orderby-highligt{% endifequal %}">
+              <td>
                   <a href="{% url 'script' site.uid job.batch.script.pk %}"><strong>{{job.batch.script.name}}</strong></a>
                   <span class="batch">{{job.batch.name}}</span>
               </td>
-              <td class="{% ifequal orderby_key 'created' %}orderby-highligt{% endifequal %}">{{job.created|default:'-'}}</td>
-              <td class="{% ifequal orderby_key 'started' %}orderby-highligt{% endifequal %}">{{job.started|default:'-'}}</td>
-              <td class="{% ifequal orderby_key 'finished' %}orderby-highligt{% endifequal %}">{{job.finished|default:'-'}}</td>
-              <td class="{% ifequal orderby_key 'status' %}orderby-highligt{% endifequal %}"><span class="badge {{job.status_label}}">{{job.status_translated}}</span></td>
+              <td>{{job.created|default:'-'}}</td>
+              <td>{{job.started|default:'-'}}</td>
+              <td>{{job.finished|default:'-'}}</td>
+              <td><span class="badge {{job.status_label}}">{{job.status_translated}}</span></td>
               <td>
                 {% if job.has_info %}
                   <button type="button" class="btn jobinfobutton p-0" data-pk="{{ job.pk }}" data-bs-toggle="popover" data-bs-content="Loading..." data-bs-html="true" data-bs-placement="left" data-bs-trigger="click" data-bs-animation="true">
@@ -184,25 +174,9 @@
       </div>
 
       <script>
-        // Hack to ensure that when sorting jobs table,
-        // the "Jobhistorik" tab opens on window load:
         window.addEventListener('load', function() {
-          // Manually initialize javascript for tabs
-          var triggerTabList = [].slice.call(document.querySelectorAll('#pc-tabs a'))
-          triggerTabList.forEach(function (triggerEl) {
-            var tabTrigger = new bootstrap.Tab(triggerEl)
-            triggerEl.addEventListener('click', function (event) {
-              tabTrigger.show()
-            })
-          })
           // Initialize job info buttons on load.
           BibOS.setupJobInfoButtons($(".jobtable"))
-
-          // Open #jobs tab if the url contains this hash
-          if (location.hash === '#jobs') {
-            var triggerEl = document.getElementById('jobs-tab')
-            bootstrap.Tab.getInstance(triggerEl).show()
-          }
         })
       </script>
     </form>

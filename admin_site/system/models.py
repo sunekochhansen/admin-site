@@ -1,19 +1,15 @@
 import datetime
-from email.policy import default
 import random
-from statistics import mode
+import re
 import string
 
-from dateutil.relativedelta import relativedelta
-
 from django.db import models, transaction
-from django.utils.translation import ugettext_lazy as _
+from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.urls import reverse
-
-from markdownx.utils import markdownify
-from markdownx.models import MarkdownxField
+from django.core.validators import MinValueValidator, RegexValidator
 
 from system.mixins import AuditModelMixin
 from system.managers import SecurityEventQuerySet
@@ -21,10 +17,9 @@ from system.managers import SecurityEventQuerySet
 """The following variables define states of objects like jobs or PCs. It is
 used for labeling in the GUI."""
 
-# States
+# PC States
 NEW = _("status:New")
 FAIL = _("status:Fail")
-UPDATE = _("status:Update")
 OK = ""
 
 # Priorities
@@ -34,8 +29,36 @@ IMPORTANT = "important"
 NONE = ""
 
 
+# Consider adding SecurityEvent states to this as well if that can make sense/work
+class EventLevels:
+    CRITICAL = "Critical"
+    HIGH = "High"
+    NORMAL = "Normal"
+
+    LEVEL_TRANSLATIONS = {
+        # Translators: Related to security levels
+        CRITICAL: _("Critical"),
+        # Translators: Related to security levels
+        HIGH: _("High"),
+        # Translators: Related to security levels
+        NORMAL: _("Normal"),
+    }
+
+    LEVEL_CHOICES = (
+        (CRITICAL, LEVEL_TRANSLATIONS[CRITICAL]),
+        (HIGH, LEVEL_TRANSLATIONS[HIGH]),
+        (NORMAL, LEVEL_TRANSLATIONS[NORMAL]),
+    )
+
+    LEVEL_TO_LABEL = {
+        CRITICAL: "label-important",
+        HIGH: "label-warning",
+        NORMAL: "label-gentle-warning",
+    }
+
+
 class Configuration(models.Model):
-    """This class contains/represents the configuration of a Site, a
+    """This class contains/represents the configuration of a Site,
     a PC Group or a PC."""
 
     # Doesn't need any actual fields, it seems. Should not exist independently
@@ -121,14 +144,57 @@ class ConfigurationEntry(models.Model):
         ordering = ["key"]
 
 
+class Country(models.Model):
+    name = models.CharField(verbose_name=_("country name"), max_length=255)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "countries"
+
+
+class Customer(models.Model):
+    """A customer that can have one or more sites"""
+
+    name = models.CharField(verbose_name=_("customer name"), max_length=255)
+    country = models.ForeignKey(
+        Country, related_name="customers", on_delete=models.PROTECT, null=True
+    )
+    paid_for_access_until = models.DateField(
+        verbose_name=_("Paid for access until this date"), null=True, blank=True
+    )
+    is_test = models.BooleanField(verbose_name=_("Is a test customer"), default=False)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ["name"]
+
+
 class Site(models.Model):
     """A site which we wish to admin"""
 
     name = models.CharField(verbose_name=_("name"), max_length=255)
-    uid = models.CharField(verbose_name=_("UID"), max_length=255, unique=True)
+    uid = models.CharField(
+        verbose_name=_("UID"),
+        max_length=40,
+        unique=True,
+        # Essentially a slug_validator except uppercase and _ aren't allowed, for standardisation
+        validators=[
+            RegexValidator(
+                re.compile("^[-a-z0-9]+\\Z"),
+                "Enter a valid “UID” consisting of lowercase letters, numbers or hyphens.",
+                "invalid",
+            )
+        ],
+        help_text=_("This UID is used when registering a PC with the admin site."),
+    )
     configuration = models.ForeignKey(Configuration, on_delete=models.PROTECT)
-    paid_for_access_until = models.DateField(
-        verbose_name=_("Paid for access until this date"), null=True, blank=True
+    customer = models.ForeignKey(
+        Customer, related_name="sites", on_delete=models.PROTECT, null=True
     )
     created = models.DateTimeField(
         verbose_name=_("created"), auto_now_add=True, null=True
@@ -137,13 +203,54 @@ class Site(models.Model):
     # https://slks.dk/omraader/kulturinstitutioner/biblioteker/biblioteksstandardisering/biblioteksnumre
 
     # Necessary for customers who wish to integrate with standard library login.
-    isil = models.CharField(
-        verbose_name="ISIL",
-        max_length=10,
+    agency_id = models.CharField(
+        verbose_name=_("ISIL/NCIP"),
+        max_length=50,
         blank=True,
         help_text=_(
             "Necessary for customers who wish to"
             " integrate with standard library login"
+        ),
+    )
+    citizen_login_api_user = models.CharField(
+        verbose_name=_("Username for login API (e.g. Cicero)"),
+        max_length=100,
+        blank=True,
+        help_text=_(
+            "Necessary for customers who wish to authenticate BorgerPC logins through an API (e.g. Cicero)"
+        ),
+    )
+    citizen_login_api_password = models.CharField(
+        verbose_name=_("Password for login API (e.g. Cicero)"),
+        max_length=255,
+        blank=True,
+        help_text=_(
+            "Necessary for customers who wish to authenticate BorgerPC logins through an API (e.g. Cicero)"
+        ),
+    )
+    citizen_login_api_key = models.CharField(
+        verbose_name=_("API key for login API (e.g. Quria)"),
+        max_length=255,
+        blank=True,
+        help_text=_(
+            "Necessary for customers who wish to authenticate BorgerPC logins through an API "
+            "that requires an API key (e.g. Quria)"
+        ),
+    )
+    booking_api_url = models.CharField(
+        verbose_name=_("URL domain (including subdomain) for Easy!Appointments"),
+        max_length=255,
+        blank=True,
+        help_text=_(
+            "Necessary for customers who wish to require booking through Easy!Appointments"
+        ),
+    )
+    booking_api_key = models.CharField(
+        verbose_name=_("API key for Easy!Appointments"),
+        max_length=255,
+        blank=True,
+        help_text=_(
+            "Necessary for customers who wish to require booking through Easy!Appointments"
         ),
     )
     user_login_duration = models.DurationField(
@@ -160,6 +267,12 @@ class Site(models.Model):
         blank=True,
         default=datetime.timedelta(hours=4),
     )
+    rerun_asc = models.BooleanField(
+        verbose_name=_(
+            "Automatically rerun associated scripts when you update their arguments"
+        ),
+        default=True,
+    )
 
     class Meta:
         ordering = ["name"]
@@ -167,7 +280,7 @@ class Site(models.Model):
     @property
     def users(self):
         users = (
-            User.objects.filter(bibos_profile__sites=self)
+            User.objects.filter(user_profile__sites=self)
             .extra(select={"lower_name": "lower(username)"})
             .order_by("lower_name")
         )
@@ -207,16 +320,33 @@ class Site(models.Model):
         pass
 
     def get_absolute_url(self):
-        return "/site/{0}".format(self.url)
+        return reverse("settings", kwargs={"slug": self.uid})
+
+
+class LoginLog(models.Model):
+    """A log of a single login on a borgerPC containing a citizen identifier,
+    the related site, the date of login, the time of login and the time of logout."""
+
+    identifier = models.CharField(verbose_name=_("identifier"), max_length=255)
+    site = models.ForeignKey(Site, related_name="login_log", on_delete=models.CASCADE)
+    date = models.DateField(verbose_name=_("Date of login"))
+    login_time = models.TimeField(verbose_name=_("Time of login"))
+    logout_time = models.TimeField(verbose_name=_("Time of logout"), blank=True)
+
+    def __str__(self):
+        return f"{self.identifier}: {self.date}"
+
+    class Meta:
+        ordering = ["date", "identifier", "login_time"]
 
 
 class FeaturePermission(models.Model):
     name = models.CharField(verbose_name=_("name"), max_length=255)
     uid = models.CharField(verbose_name=_("UID"), max_length=255, unique=True)
-    sites = models.ManyToManyField(
-        Site,
+    customers = models.ManyToManyField(
+        Customer,
         related_name="feature_permission",
-        verbose_name=_("sites with access"),
+        verbose_name=_("customers with access"),
         blank=True,
     )
 
@@ -451,6 +581,13 @@ class PCGroup(models.Model):
         WakeWeekPlan, related_name="groups", on_delete=models.SET_NULL, null=True
     )
 
+    supervisors = models.ManyToManyField(
+        User,
+        related_name="pc_groups",
+        verbose_name=_("supervisors"),
+        blank=True,
+    )
+
     def __str__(self):
         return self.name
 
@@ -486,6 +623,7 @@ class PCGroup(models.Model):
 
         existing_set = set(asc.pk for asc in self.policy.all())
         old_params = set()
+        updated_policy_scripts = set()
 
         for pk in existing_set:
             asc = AssociatedScript.objects.get(pk=pk)
@@ -525,6 +663,11 @@ class PCGroup(models.Model):
                         else:
                             pass
                     else:
+                        if (
+                            par.pk is not None
+                            and par.file_value != req_files[param_name]
+                        ):
+                            updated_policy_scripts.add(par.associated_script)
                         par.file_value = req_files[param_name]
                 else:
                     if param_name not in req_params or (
@@ -540,16 +683,21 @@ class PCGroup(models.Model):
                     elif not req_params[param_name] and inp.mandatory:
                         raise MandatoryParameterMissingError(inp)
                     else:
+                        if (
+                            par.pk is not None
+                            and par.string_value != req_params[param_name]
+                        ):
+                            updated_policy_scripts.add(par.associated_script)
                         par.string_value = req_params[param_name]
                 par.save()
+        return updated_policy_scripts
 
     @property
     def ordered_policy(self):
         return self.policy.all().order_by("position")
 
     def get_absolute_url(self):
-        site_url = self.site.get_absolute_url()
-        return "{0}/groups/{1}".format(site_url, self.url)
+        return reverse("group", args=(self.site.uid, self.id))
 
     class Meta:
         ordering = ["name"]
@@ -570,9 +718,6 @@ class PC(models.Model):
     pc_groups = models.ManyToManyField(PCGroup, related_name="pcs", blank=True)
     site = models.ForeignKey(Site, related_name="pcs", on_delete=models.CASCADE)
     is_activated = models.BooleanField(verbose_name=_("activated"), default=False)
-    is_update_required = models.BooleanField(
-        verbose_name=_("update required"), default=False
-    )
     created = models.DateTimeField(
         verbose_name=_("created"), auto_now_add=True, null=True
     )
@@ -587,7 +732,7 @@ class PC(models.Model):
         if not self.last_seen:
             return False
         now = timezone.now()
-        return self.last_seen >= now - relativedelta(minutes=5)
+        return self.last_seen >= now - datetime.timedelta(minutes=5)
 
     class Status:
         """This class represents the status of af PC. We may want to do
@@ -601,9 +746,6 @@ class PC(models.Model):
     def status(self):
         if not self.is_activated:
             return self.Status(NEW, INFO)
-        elif self.is_update_required:
-            # If packages require update
-            return self.Status(UPDATE, WARNING)
         else:
             # Get a list of all jobs associated with this PC and see if any of
             # them failed.
@@ -637,6 +779,9 @@ class PC(models.Model):
         for conf in configs:
             for entry in conf.entries.all():
                 result[entry.key] = entry.value
+        if "mac" not in result.keys():
+            result["mac"] = self.mac
+        result["uid"] = self.uid
         return result
 
     def get_merged_config_list(self, key, default=None):
@@ -661,8 +806,8 @@ class PC(models.Model):
     def get_absolute_url(self):
         return reverse("computer", args=(self.site.uid, self.uid))
 
-    def os2_product(self):
-        """Return whether a PC is running os2borgerpc or os2borgerpc kiosk."""
+    def product(self):
+        """Return which Product the PC is an installation of."""
         return self.get_config_value("os2_product")
 
     def __str__(self):
@@ -676,6 +821,19 @@ class ScriptTag(models.Model):
     """A tag model for scripts."""
 
     name = models.CharField(verbose_name=_("name"), max_length=255)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Product(models.Model):
+    """A model for Product (e.g. OS2borgerPC or OS2borgerPC Kiosk), related to Image Versions and Scripts."""
+
+    name = models.CharField(verbose_name=_("name"), max_length=128)
+    multilang = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["name"]
@@ -716,6 +874,16 @@ class Script(AuditModelMixin):
         null=False,
     )
     tags = models.ManyToManyField(ScriptTag, related_name="scripts", blank=True)
+    feature_permission = models.ForeignKey(
+        FeaturePermission,
+        related_name="scripts",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+    products = models.ManyToManyField(
+        Product, related_name="scripts_for_product", blank=True
+    )
 
     @property
     def is_global(self):
@@ -728,18 +896,30 @@ class Script(AuditModelMixin):
         batch = Batch(site=site, script=self, name="")
         batch.save()
 
+        parameter_values = "["
+
         # Add parameters
         for i, inp in enumerate(self.ordered_inputs):
             if i < len(args):
                 value = args[i]
+                if inp.value_type == Input.PASSWORD:
+                    parameter_values += "*****, "
+                else:
+                    parameter_values += str(value) + ", "
                 if inp.value_type == Input.FILE:
                     p = BatchParameter(input=inp, batch=batch, file_value=value)
                 else:
                     p = BatchParameter(input=inp, batch=batch, string_value=value)
                 p.save()
 
+        if len(parameter_values) > 1:
+            parameter_values = parameter_values[:-2]
+        parameter_values += "]"
+
+        log_output = f"New job with arguments {parameter_values}"
+
         for pc in pc_list:
-            job = Job(batch=batch, pc=pc, user=user)
+            job = Job(batch=batch, pc=pc, user=user, log_output=log_output)
             job.save()
 
         return batch
@@ -749,14 +929,14 @@ class Script(AuditModelMixin):
         return self.inputs.all().order_by("position")
 
     def get_absolute_url(self, **kwargs):
-        if "site_uid" in kwargs:
-            site_uid = kwargs["site_uid"]
+        if "slug" in kwargs:
+            slug = kwargs["slug"]
         else:
-            site_uid = self.site.uid
+            slug = self.site.uid
         if self.is_security_script:
-            return reverse("security_script", args=(site_uid, self.pk))
+            return reverse("security_script", args=(slug, self.pk))
         else:
-            return reverse("script", args=(site_uid, self.pk))
+            return reverse("script", args=(slug, self.pk))
 
     class Meta:
         ordering = ["name"]
@@ -799,7 +979,7 @@ class AssociatedScript(models.Model):
 
     def make_parameters(self, batch):
         params = []
-        for i in self.script.inputs.all():
+        for i in self.script.ordered_inputs.all():
             try:
                 asp = self.parameters.get(input=i)
                 params.append(asp.make_batch_parameter(batch))
@@ -819,10 +999,25 @@ Runs this script on several PCs, returning a batch representing this task."""
         batch.save()
         params = self.make_parameters(batch)
 
+        parameter_values = "["
+
         for p in params:
             p.save()
+            if p.file_value:
+                parameter_values += str(p.file_value) + ", "
+            elif p.input.value_type == Input.PASSWORD:
+                parameter_values += "*****, "
+            else:
+                parameter_values += str(p.string_value) + ", "
+
+        if len(parameter_values) > 1:
+            parameter_values = parameter_values[:-2]
+        parameter_values += "]"
+
+        log_output = f"New job with arguments {parameter_values}"
+
         for pc in pcs:
-            job = Job(batch=batch, pc=pc, user=user)
+            job = Job(batch=batch, pc=pc, user=user, log_output=log_output)
             job.save()
 
         return batch
@@ -844,24 +1039,26 @@ class Job(models.Model):
     # Job status choices
     NEW = "NEW"
     SUBMITTED = "SUBMITTED"
-    RUNNING = "RUNNING"
     DONE = "DONE"
     FAILED = "FAILED"
     RESOLVED = "RESOLVED"
 
     STATUS_TRANSLATIONS = {
-        NEW: _("jobstatus:New"),
-        SUBMITTED: _("jobstatus:Submitted"),
-        RUNNING: _("jobstatus:Running"),
-        FAILED: _("jobstatus:Failed"),
-        DONE: _("jobstatus:Done"),
-        RESOLVED: _("jobstatus:Resolved"),
+        # Translators: Related to job status
+        NEW: _("New"),
+        # Translators: Related to job status
+        SUBMITTED: _("Submitted"),
+        # Translators: Related to job status
+        FAILED: _("Failed"),
+        # Translators: Related to job status
+        DONE: _("Done"),
+        # Translators: Related to job status
+        RESOLVED: _("Restarted"),
     }
 
     STATUS_CHOICES = (
         (NEW, STATUS_TRANSLATIONS[NEW]),
         (SUBMITTED, STATUS_TRANSLATIONS[SUBMITTED]),
-        (RUNNING, STATUS_TRANSLATIONS[RUNNING]),
         (FAILED, STATUS_TRANSLATIONS[FAILED]),
         (DONE, STATUS_TRANSLATIONS[DONE]),
         (RESOLVED, STATUS_TRANSLATIONS[RESOLVED]),
@@ -871,7 +1068,6 @@ class Job(models.Model):
     STATUS_TO_LABEL = {
         NEW: "bg-secondary",
         SUBMITTED: "bg-info",
-        RUNNING: "bg-warning",
         DONE: "bg-success",
         FAILED: "bg-danger",
         RESOLVED: "bg-primary",
@@ -935,7 +1131,7 @@ class Job(models.Model):
         }
 
     def resolve(self):
-        if self.failed:
+        if self.finished:
             self.status = Job.RESOLVED
             self.save()
         else:
@@ -946,13 +1142,20 @@ class Job(models.Model):
             )
 
     def restart(self, user=user):
-        if not self.failed:
-            raise Exception(_("Can only restart jobs with status %s") % (Job.FAILED))
+        if not self.finished:
+            raise Exception(_("Can only restart jobs that are Done or Failed %s") % "")
         # Create a new batch
         script = self.batch.script
         new_batch = Batch(site=self.batch.site, script=script, name="")
         new_batch.save()
+        parameter_values = "["
         for p in self.batch.parameters.all():
+            if p.input.value_type == Input.PASSWORD:
+                parameter_values += "*****, "
+            elif p.input.value_type == Input.FILE:
+                parameter_values += str(p.file_value) + ", "
+            else:
+                parameter_values += str(p.string_value) + ", "
             new_p = BatchParameter(
                 input=p.input,
                 batch=new_batch,
@@ -961,7 +1164,13 @@ class Job(models.Model):
             )
             new_p.save()
 
-        new_job = Job(batch=new_batch, pc=self.pc, user=user)
+        if len(parameter_values) > 1:
+            parameter_values = parameter_values[:-2]
+        parameter_values += "]"
+
+        log_output = f"New job with arguments {parameter_values}"
+
+        new_job = Job(batch=new_batch, pc=self.pc, user=user, log_output=log_output)
         new_job.save()
         self.resolve()
 
@@ -979,6 +1188,7 @@ class Input(models.Model):
     BOOLEAN = "BOOLEAN"
     TIME = "TIME"
     PASSWORD = "PASSWORD"
+    CHOICE = "TEXT_FIELD"
 
     VALUE_CHOICES = (
         (STRING, _("String")),
@@ -988,6 +1198,7 @@ class Input(models.Model):
         (BOOLEAN, _("Boolean")),
         (TIME, _("Time")),
         (PASSWORD, _("Password")),
+        (CHOICE, _("Choices")),
     )
 
     name = models.CharField(verbose_name=_("name"), max_length=255)
@@ -1071,57 +1282,27 @@ class AssociatedScriptParameter(Parameter):
         )
 
 
-class SecurityProblem(models.Model):
-    """A security problem and the method (script) to handle it."""
-
-    # Problem levels.
-
-    NORMAL = "Normal"
-    HIGH = "High"
-    CRITICAL = "Critical"
-
-    LEVEL_TRANSLATIONS = {
-        NORMAL: _("securitylevel:Normal"),
-        HIGH: _("securitylevel:High"),
-        CRITICAL: _("securitylevel:Critical"),
-    }
-
-    LEVEL_CHOICES = (
-        (CRITICAL, LEVEL_TRANSLATIONS[CRITICAL]),
-        (HIGH, LEVEL_TRANSLATIONS[HIGH]),
-        (NORMAL, LEVEL_TRANSLATIONS[NORMAL]),
-    )
-
-    LEVEL_TO_LABEL = {
-        NORMAL: "label-gentle-warning",
-        HIGH: "label-warning",
-        CRITICAL: "label-important",
-    }
+class EventRuleBase(models.Model):
+    """Contains everything shared between SecurityProblem and EventRuleServer."""
 
     name = models.CharField(verbose_name=_("name"), max_length=255)
-    uid = models.SlugField(verbose_name=_("UID"), unique=True)
     description = models.TextField(verbose_name=_("description"), blank=True)
     level = models.CharField(
-        verbose_name=_("level"), max_length=10, choices=LEVEL_CHOICES, default=HIGH
+        verbose_name=_("level"),
+        max_length=10,
+        choices=EventLevels.LEVEL_CHOICES,
+        default=EventLevels.HIGH,
     )
-    site = models.ForeignKey(
-        Site, related_name="security_problems", on_delete=models.CASCADE
-    )
-    security_script = models.ForeignKey(
-        Script,
-        verbose_name=_("security script"),
-        related_name="security_problems",
-        on_delete=models.CASCADE,
-    )
+    site = models.ForeignKey(Site, related_name="%(class)s", on_delete=models.CASCADE)
     alert_groups = models.ManyToManyField(
         PCGroup,
-        related_name="security_problems",
+        related_name="%(class)s",
         verbose_name=_("alert groups"),
         blank=True,
     )
     alert_users = models.ManyToManyField(
         User,
-        related_name="security_problems",
+        related_name="%(class)s",
         verbose_name=_("alert users"),
         blank=True,
     )
@@ -1131,14 +1312,46 @@ class SecurityProblem(models.Model):
 
     class Meta:
         ordering = ["name"]
+        abstract = True
 
-        constraints = [
-            models.UniqueConstraint(fields=["uid", "site"], name="unique_uid_per_site"),
-        ]
+
+# Idea for future name change: EventRuleClient?
+class SecurityProblem(EventRuleBase):
+    """A security problem and the method (script) to handle it."""
+
+    security_script = models.ForeignKey(
+        Script,
+        verbose_name=_("security script"),
+        related_name="security_problems",
+        on_delete=models.CASCADE,
+    )
+
+    def get_absolute_url(self):
+        return reverse("event_rule_security_problem", args=(self.site.uid, self.id))
+
+
+class EventRuleServer(EventRuleBase):
+    """A model representing a different type of SecurityProblem. A regular SecurityProblem is a script sent to the
+    computer which does some work and then conditionally reports alerts to the adminsite.
+    An EventRuleServer is instead the adminsite doing some work and conditionally creating an alert.
+    Example task: Check whether a computer hasn't been offline more than X amount of time.
+    """
+
+    monitor_period_start = models.TimeField(verbose_name=_("monitor period start"))
+    monitor_period_end = models.TimeField(verbose_name=_("monitor period end"))
+    # If implementing more EventRuleServer's this field would likely be made optional:
+    maximum_offline_period = models.PositiveSmallIntegerField(
+        verbose_name=_("maximum offline period allowed, in minutes"),
+        default=15,
+        validators=[MinValueValidator(15)],
+        help_text=_("How long a PC may be offline before an event is created"),
+    )
+
+    def get_absolute_url(self):
+        return reverse("event_rule_server", args=(self.site.uid, self.id))
 
 
 class SecurityEvent(models.Model):
-
     """A security event is an instance of a security problem."""
 
     # Event status choices
@@ -1150,9 +1363,12 @@ class SecurityEvent(models.Model):
     RESOLVED = "RESOLVED"
 
     STATUS_TRANSLATIONS = {
-        NEW: _("eventstatus:New"),
-        ASSIGNED: _("eventstatus:Assigned"),
-        RESOLVED: _("eventstatus:Resolved"),
+        # Translators: Related to event status
+        NEW: _("New "),
+        # Translators: Related to event status
+        ASSIGNED: _("Assigned"),
+        # Translators: Related to event status
+        RESOLVED: _("Resolved"),
     }
 
     STATUS_CHOICES = (
@@ -1166,7 +1382,12 @@ class SecurityEvent(models.Model):
         ASSIGNED: "bg-secondary",
         RESOLVED: "bg-success",
     }
-    problem = models.ForeignKey(SecurityProblem, null=False, on_delete=models.CASCADE)
+    problem = models.ForeignKey(
+        SecurityProblem, null=True, blank=True, on_delete=models.CASCADE
+    )
+    event_rule_server = models.ForeignKey(
+        EventRuleServer, null=True, blank=True, on_delete=models.CASCADE
+    )
     # The time the problem was reported in the log file
     occurred_time = models.DateTimeField(verbose_name=_("occurred"))
     # The time the problem was submitted to the system
@@ -1184,37 +1405,48 @@ class SecurityEvent(models.Model):
     )
     note = models.TextField(blank=True)
 
+    @property
+    def namestr(self):
+        return str(self)
+
     def __str__(self):
-        return "{0}: {1}".format(self.problem.name, self.id)
+        if self.problem:
+            return "{0}: {1}".format(self.problem.name, self.id)
+        else:
+            return "{0}: {1}".format(self.event_rule_server.name, self.id)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=Q(problem__isnull=False, event_rule_server=None)
+                | Q(problem=None, event_rule_server__isnull=False),
+                name="problem_or_rule_set",
+            ),
+        ]
 
 
 class ImageVersion(models.Model):
-    BORGERPC = "BORGERPC"
-    BORGERPC_KIOSK = "BORGERPC_KIOSK"
-
-    platform_choices = (
-        (BORGERPC, "OS2borgerPC"),
-        (BORGERPC_KIOSK, "OS2borgerPC Kiosk"),
+    product = models.ForeignKey(
+        Product,
+        verbose_name=_("product"),
+        on_delete=models.PROTECT,
+        null=True,  # TODO: Migrate to make this mandatory later
     )
-
-    platform = models.CharField(max_length=128, choices=platform_choices)
-    image_version = models.CharField(unique=True, max_length=7)
+    image_version = models.CharField(max_length=7)
     release_date = models.DateField()
     os = models.CharField(verbose_name="OS", max_length=30)
     release_notes = models.TextField(max_length=1500)
     image_upload = models.FileField(upload_to="images", default="#")
+    image_upload_multilang = models.FileField(
+        upload_to="images", default="#", blank=True, null=True
+    )
 
     def __str__(self):
-        return "| {0} | {1} | {2} | {3} | {4} |".format(
-            self.image_version,
-            self.release_date,
-            self.os,
-            self.release_notes,
-            self.image_upload,
-        )
-
-    class Meta:
-        ordering = ["platform", "-image_version"]
+        # TODO: Delete the second path here once product has been changed to mandatory
+        if self.product and self.product.name:
+            return f"{self.product.name} {self.image_version}"
+        else:
+            return f"{self.image_version}"
 
 
 # Last_successful_login is only updated whenever the citizen user:
@@ -1225,6 +1457,7 @@ class Citizen(models.Model):
     citizen_id = models.CharField(unique=True, max_length=128)
     last_successful_login = models.DateTimeField()
     site = models.ForeignKey(Site, on_delete=models.CASCADE)
+    logged_in = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.site} - {self.citizen_id}"
@@ -1237,68 +1470,15 @@ class Citizen(models.Model):
         ]
 
 
-# A model to sort Changelog entries into categories
-class ChangelogTag(models.Model):
-    name = models.CharField(verbose_name=_("name"), max_length=255)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
-# A model that represents one changelog entry, used to showcase changes/new features to users
-class Changelog(models.Model):
-    title = models.CharField(verbose_name=_("title"), max_length=100)
-    description = models.TextField(verbose_name=_("description"), max_length=240)
-    content = MarkdownxField(verbose_name=_("content"))
-    tags = models.ManyToManyField(ChangelogTag, related_name="changelogs", blank=True)
-    created = models.DateTimeField(verbose_name=_("created"), default=timezone.now)
-    updated = models.DateTimeField(verbose_name=_("updated"), default=timezone.now)
-    author = models.CharField(verbose_name=_("author"), max_length=255)
-    # This field should be used to denote the version number of the given product
-    # Ie 'admin-site version 1.2.3' or 'script name version 1.0'
-    version = models.CharField(verbose_name=_("version"), max_length=255)
-    site = models.ForeignKey(
-        Site, related_name="changelogs", null=True, blank=True, on_delete=models.CASCADE
+class APIKey(models.Model):
+    key = models.CharField(verbose_name=_("key"), max_length=100, unique=True)
+    description = models.CharField(
+        verbose_name=_("description"), max_length=100, null=True, blank=True
     )
-
-    def get_tags(self):
-        return self.tags.values("name", "pk")
-
-    def render_content(self):
-        # This method returns the markdown text of the 'content' field as html code.
-        return markdownify(self.content)
-
-    def __str__(self):
-        return self.title
-
-    class Meta:
-        ordering = ["-created"]
-
-
-class ChangelogComment(models.Model):
-    content = models.TextField(verbose_name=_("content"), max_length=240)
     created = models.DateTimeField(
         verbose_name=_("created"), editable=False, auto_now_add=True
     )
-    changelog = models.ForeignKey(
-        Changelog, related_name="comments", on_delete=models.CASCADE, null=True
-    )
-    user = models.ForeignKey(User, related_name="comments", on_delete=models.CASCADE)
-    parent_comment = models.ForeignKey(
-        "self",
-        default=None,
-        null=True,
-        blank=True,
-        related_name="comment_children",
-        on_delete=models.CASCADE,
-    )
+    site = models.ForeignKey(Site, related_name="apikeys", on_delete=models.CASCADE)
 
-    def get_user(self):
-        if self.user:
-            return User.objects.get(pk=self.user)
-
-    class Meta:
-        ordering = ["created"]
+    def __str__(self):
+        return self.key

@@ -18,30 +18,24 @@ AUTH_PROFILE_MODULE = "account.UserProfile"
 config = configparser.ConfigParser()
 config["settings"] = {}
 
-# We support loading settings from two files. The fallback values in this
-# `settings.py` is first overwritten by the values defined in the file where
-# the env var `BPC_SYSTEM_CONFIG_PATH` points to. Finally the values are
-# overwritten by the values the env var `BPC_USER_CONFIG_PATH` points to.
-#
-# The `BPC_SYSTEM_CONFIG_PATH` file is for an alternative set of default
-# values. It is useful in a specific environment such as Docker. An example is
-# the setting for STATIC_ROOT. The default in `settings.py` is relative to the
-# current directory. In Docker it should be an absolute path that is easy to
-# mount a volume to.
-#
+# We load settings from a file. The fallback values in this
+# `settings.py` is overwritten by the values defined in the file
+# the env var `BPC_USER_CONFIG_PATH` points to.
 
-# The `BPC_USER_CONFIG_PATH` file is for normal settings and should generally
+# The `BPC_USER_CONFIG_PATH` file is for settings that should generally
 # be unique to an instance deployment.
 
-for env in ["BPC_SYSTEM_CONFIG_PATH", "BPC_USER_CONFIG_PATH"]:
-    path = os.getenv(env, None)
-    if path:
-        try:
-            with open(path) as fp:
-                config.read_file(fp)
-            logger.info("Loaded setting %s from %s" % (env, path))
-        except OSError as e:
-            logger.error("Loading setting %s from %s failed with %s." % (env, path, e))
+path = os.getenv("BPC_USER_CONFIG_PATH", None)
+if path:
+    try:
+        with open(path) as fp:
+            config.read_file(fp)
+        logger.info("Loaded settings file BPC_USER_CONFIG_PATH from %s" % (path))
+    except OSError as e:
+        logger.error(
+            "Loading settings file BPC_USER_CONFIG_PATH from %s failed with %s."
+            % (path, e)
+        )
 
 # use settings section as default
 settings = config["settings"]
@@ -89,7 +83,6 @@ SOURCE_DIR = os.path.abspath(os.path.join(install_dir, ".."))
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        # Add 'postgresql_psycopg2', 'mysql', 'sqlite3' or 'oracle'.
         "NAME": settings["DB_NAME"],
         "USER": settings["DB_USER"],
         "PASSWORD": settings["DB_PASSWORD"],
@@ -107,6 +100,14 @@ if settings.get("ALLOWED_HOSTS"):
     ALLOWED_HOSTS = settings.get("ALLOWED_HOSTS").split(",")
 else:
     ALLOWED_HOSTS = []
+
+# Django > 4.0 introduced changes related to CSRF. Note that the protocol has to be specified too.
+# https://docs.djangoproject.com/en/4.2/releases/4.0/#csrf
+# https://docs.djangoproject.com/en/4.2/ref/settings/#csrf-trusted-origins
+if settings.get("CSRF_TRUSTED_ORIGINS"):
+    CSRF_TRUSTED_ORIGINS = settings.get("CSRF_TRUSTED_ORIGINS").split(",")
+else:
+    CSRF_TRUSTED_ORIGINS = []
 
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
@@ -136,7 +137,7 @@ USE_TZ = False
 
 # Absolute filesystem path to the directory that will hold user-uploaded files.
 # Example: "/var/www/example.com/media/"
-MEDIA_ROOT = settings["MEDIA_ROOT"]
+MEDIA_ROOT = "/media"
 
 # URL that handles the media served from MEDIA_ROOT. Make sure to use a
 # trailing slash.
@@ -147,7 +148,7 @@ MEDIA_URL = "/media/"
 # Don't put anything in this directory yourself; store your static files
 # in apps' "static/" subdirectories and in STATICFILES_DIRS.
 # Example: "/var/www/example.com/static/"
-STATIC_ROOT = settings["STATIC_ROOT"]
+STATIC_ROOT = "/static"
 
 # URL prefix for static files.
 # Example: "http://example.com/static/", "http://static.example.com/"
@@ -195,6 +196,8 @@ MIDDLEWARE = (
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "os2borgerpc_admin.middlewares.user_locale_middleware",
     "django.contrib.messages.middleware.MessageMiddleware",
 )
 
@@ -221,6 +224,7 @@ DOCUMENTATION_DIR = os.path.join(install_dir, "templates")
 LOCAL_APPS = (
     "system",
     "account",
+    "changelog",
 )
 
 THIRD_PARTY_APPS = (
@@ -229,6 +233,10 @@ THIRD_PARTY_APPS = (
     "crispy_forms",
     "crispy_bootstrap5",
     "markdownx",
+    "django_otp",
+    "django_otp.plugins.otp_static",
+    "django_otp.plugins.otp_totp",
+    "two_factor",
 )
 
 DJANGO_APPS = (
@@ -249,13 +257,19 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 XMLRPC_METHODS = (
     ("system.rpc.register_new_computer", "register_new_computer"),
+    ("system.rpc.register_new_computer_v2", "register_new_computer_v2"),
     ("system.rpc.send_status_info", "send_status_info"),
-    ("system.rpc.upload_dist_packages", "upload_dist_packages"),
+    ("system.rpc.send_status_info_v2", "send_status_info_v2"),
     ("system.rpc.get_instructions", "get_instructions"),
-    ("system.rpc.get_proxy_setup", "get_proxy_setup"),
     ("system.rpc.push_config_keys", "push_config_keys"),
     ("system.rpc.push_security_events", "push_security_events"),
     ("system.rpc.citizen_login", "citizen_login"),
+    ("system.rpc.citizen_logout", "citizen_logout"),
+    ("system.rpc.sms_login", "sms_login"),
+    ("system.rpc.sms_login_finalize", "sms_login_finalize"),
+    ("system.rpc.sms_logout", "sms_logout"),
+    ("system.rpc.general_citizen_login", "general_citizen_login"),
+    ("system.rpc.general_citizen_logout", "general_citizen_logout"),
 )
 
 # A sample logging configuration. The only tangible logging
@@ -290,16 +304,6 @@ LOGGING = {
     },
 }
 
-ETC_DIR = os.path.join(install_dir, "etc")
-PROXY_HTPASSWD_FILE = os.path.join(ETC_DIR, "bibos-proxy.htpasswd")
-
-# List of hosts that should be allowed through BibOS gateway proxies
-DEFAULT_ALLOWED_PROXY_HOSTS = settings.get("DEFAULT_ALLOWED_PROXY_HOSTS", [])
-
-# List of hosts that should be proxied directly from the gateway and
-# not through the central server
-DEFAULT_DIRECT_PROXY_HOSTS = settings.get("DEFAULT_DIRECT_PROXY_HOSTS", [])
-
 INITIALIZE_DATABASE = settings.getboolean("INITIALIZE_DATABASE", False)
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
@@ -309,14 +313,12 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 # Handler for citizen login.
-CITIZEN_LOGIN_VALIDATOR = settings.get(
-    "CITIZEN_LOGIN_VALIDATOR", "system.utils.cicero_validate"
+CITIZEN_LOGIN_API_VALIDATOR = settings.get(
+    "CITIZEN_LOGIN_API_VALIDATOR", "system.utils.cicero_validate"
 )
 
 # Cicero specific stuff.
 CICERO_URL = settings.get("CICERO_URL")
-CICERO_USER = settings.get("CICERO_USER")
-CICERO_PASSWORD = settings.get("CICERO_PASSWORD")
 
 # All Python Markdown's officially supported extensions can be added here without
 # any extra setup.
@@ -331,4 +333,4 @@ MARKDOWNX_IMAGE_MAX_SIZE = {"size": (800, 800), "quality": 90}
 # This specifies where uploaded media (images) are stored
 MARKDOWNX_MEDIA_PATH = datetime.now().strftime("changelog-images/%Y/%m/%d")
 
-FORM_RENDERER = "django.forms.renderers.TemplatesSetting"
+FORM_RENDERER = "django.forms.renderers.DjangoDivFormRenderer"

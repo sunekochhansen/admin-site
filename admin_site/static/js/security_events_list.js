@@ -37,13 +37,14 @@ $(function(){
 
         appendEntries: function(dataList) {
             var container = this.elem
+
             $.each(dataList.results, function() {
-                const maybe_note = this.note? '<strong>Note sat ved håndtering: </strong><br>' + this.note : ''
+                const maybe_note = this.note? '<strong>' + gettext("Note set during handling:") + '</strong><br>' + this.note : ''
                 var info_button = '<button ' +
                         'class="btn btn-secondary loginfobutton p-0" ' +
-                        'data-bs-title="Info om hændelsen" ' +
+                        'data-bs-title="' + gettext("Info about the event") + '" ' +
                         'data-bs-toggle="popover" ' +
-                        'data-bs-content="' + '<strong>Log-output fra hændelsen:</strong><br/><br/><pre class=\'p-3 bg-light\'>' + this.summary + '</pre><br/>' + maybe_note + '"' +
+                        'data-bs-content="' + '<strong>' + gettext("Log-output from the event:") + '</strong><br/><br/><pre class=\'p-3 bg-light\'>' + this.summary + '</pre><br/>' + maybe_note + '"' +
                         'data-bs-html=true ' +
                         'data-bs-placement=left ' +
                         'data-bs-trigger="click" ' +
@@ -105,7 +106,7 @@ $(function(){
             pagination.empty()
             var eventsearch = this
 
-            var previous_item = $('<li class="page-item disabled"><a class="page-link"><span class="material-icons">navigate_before</span> Forrige</a></li>')
+            var previous_item = $('<li class="page-item disabled"><a class="page-link"><span class="material-icons">navigate_before</span> ' + gettext("Previous") + '</a></li>')
             if (data.has_previous) {
                 previous_item.removeClass("disabled")
                 previous_item.find('a').on("click", function() {
@@ -131,7 +132,7 @@ $(function(){
                 item.appendTo(pagination)
             })
 
-            var next_item = $('<li class="page-item disabled"><a class="page-link">Næste <span class="material-icons">navigate_next</span></a></li>')
+            var next_item = $('<li class="page-item disabled"><a class="page-link">' + gettext("Next") + ' <span class="material-icons">navigate_next</span></a></li>')
             if (data.has_next) {
                 next_item.removeClass("disabled")
                 next_item.find('a').on("click", function() {
@@ -203,7 +204,7 @@ function updateCounter() {
     handleButton = document.getElementById("handle-event-button")
 
     // Updates the text on the button to show how many (if any) events have been selected
-    handleButton.innerText = "Håndter " + ( selectedEvents > 0 ? selectedEvents + " ud af " + totalEvents : "") + " advarsler"
+    handleButton.innerText = gettext("Handle") + " " + ( selectedEvents > 0 ? selectedEvents + " " + gettext("out of") + " " + totalEvents : "") + " " + gettext("events")
 
     // Disables the button when no elements are selected
     document.getElementById("handle-event-button").disabled = ( selectedEvents == 0 )

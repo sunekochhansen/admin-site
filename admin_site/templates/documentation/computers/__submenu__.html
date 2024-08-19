@@ -1,11 +1,12 @@
+{% load i18n %}
 <ul class="docsubnav">
-    <li {% ifequal submenu_active 'edit' %}class="active"{% endifequal %}>
-      <a href="{% url 'doc' 'computers/edit' %}"> Generel redigering</a>
+    <li {% if submenu_active == 'edit' %}class="active"{% endif %}>
+      <a href="{% url 'doc' 'computers/edit' %}"> {%translate "General editing" %}</a>
     </li>
-    <li {% ifequal submenu_active 'jobs' %}class="active"{% endifequal %}>
-      <a href="{% url 'doc' 'computers/jobs' %}"> Jobhistorik</a>
+    <li {% if submenu_active == 'jobs' %}class="active"{% endif %}>
+      <a href="{% url 'doc' 'computers/jobs' %}"> {% translate "Job history" %}</a>
     </li>
-    <li {% ifequal submenu_active 'activating' %}class="active"{% endifequal %}>
-      <a href="{% url 'doc' 'computers/activating' %}"> Aktivering</a>
+    <li {% if submenu_active == 'activating' %}class="active"{% endif %}>
+      <a href="{% url 'doc' 'computers/activating' %}"> {% translate "Activating" %}</a>
     </li>
 </ul>

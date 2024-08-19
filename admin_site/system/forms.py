@@ -1,10 +1,9 @@
 from django import forms
 from django.forms import ValidationError
 from django.contrib.auth.models import User
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from system.models import (
-    ChangelogComment,
     ConfigurationEntry,
     Input,
     PC,
@@ -13,35 +12,46 @@ from system.models import (
     WakeWeekPlan,
     Script,
     SecurityEvent,
-    SecurityProblem,
+    EventRuleServer,
     Site,
 )
 from account.models import SiteMembership, UserProfile
 
-time_format = forms.TimeInput(attrs={"type": "time", "max": "23:59"}, format="%H:%M")
-date_format = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
-
-
-# Adds the passed-in CSS classes to CharField (type=text + textarea)
-# and the multitude of Fields that default to a <select> widget)
-def add_classes_to_form(someform, classes_to_add):
-    for field_name, field in someform.fields.items():
-        matches_select_widget = [
-            forms.ChoiceField,
-            forms.TypedChoiceField,
-            forms.MultipleChoiceField,
-            forms.TypedMultipleChoiceField,
-            forms.ModelChoiceField,
-            forms.ModelMultipleChoiceField,
-        ]
-        if type(field) in matches_select_widget + [forms.CharField]:
-            # Append if classes have already been added
-            if "class" not in field.widget.attrs:
-                field.widget.attrs["class"] = ""
-            field.widget.attrs["class"] += " " + classes_to_add
+time_format = forms.TimeInput(
+    attrs={"type": "time", "max": "23:59", "class": "form-control"}, format="%H:%M"
+)
+date_format = forms.DateInput(
+    attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"
+)
 
 
 class SiteForm(forms.ModelForm):
+    citizen_login_api_password = forms.CharField(
+        label=_("Password for login API (e.g. Cicero)"),
+        widget=forms.PasswordInput(attrs={"class": "passwordinput"}),
+        required=False,
+        help_text=_(
+            "Necessary for customers who wish to authenticate BorgerPC logins through an API (e.g. Cicero)"
+        ),
+    )
+    booking_api_key = forms.CharField(
+        label=_("API key for Easy!Appointments"),
+        widget=forms.PasswordInput(attrs={"class": "passwordinput"}),
+        required=False,
+        help_text=_(
+            "Necessary for customers who wish to require booking through Easy!Appointments"
+        ),
+    )
+    citizen_login_api_key = forms.CharField(
+        label=_("API key for login API (e.g. Quria)"),
+        widget=forms.PasswordInput(attrs={"class": "passwordinput"}),
+        required=False,
+        help_text=_(
+            "Necessary for customers who wish to authenticate BorgerPC logins through an API "
+            "that requires an API key (e.g. Quria)"
+        ),
+    )
+
     def __init__(self, *args, **kwargs):
         super(SiteForm, self).__init__(*args, **kwargs)
         instance = getattr(self, "instance", None)
@@ -50,9 +60,24 @@ class SiteForm(forms.ModelForm):
 
     class Meta:
         model = Site
-        exclude = ["configuration", "paid_for_access_until"]
+        exclude = [
+            "configuration",
+            "paid_for_access_until",
+            "country",
+            "customer",
+        ]
         widgets = {
             "paid_for_access_until": forms.widgets.DateInput(attrs={"type": "date"}),
+        }
+
+
+class SiteCreateForm(forms.ModelForm):
+
+    class Meta:
+        model = Site
+        fields = ("name", "uid")
+        widgets = {
+            "uid": forms.widgets.TextInput(attrs={"pattern": "[\-a-z0-9]{2,40}"}),
         }
 
 
@@ -110,13 +135,33 @@ class ScriptForm(forms.ModelForm):
 
     class Meta:
         model = Script
-        fields = "__all__"
+        exclude = ["feature_permission", "product"]
 
 
 class ConfigurationEntryForm(forms.ModelForm):
     class Meta:
         model = ConfigurationEntry
         exclude = ["owner_configuration"]
+
+
+class UserLinkForm(forms.Form):
+    linked_users = forms.ModelMultipleChoiceField(
+        queryset=User.objects.all(),
+        required=False,
+        label=_("Select users to be added to this site"),
+        help_text=_("Hold down Ctrl to select multiple users"),
+    )
+
+    usertype = forms.ChoiceField(
+        required=True,
+        choices=SiteMembership.type_choices,
+        label=_("Select the usertype that the users should be added with"),
+    )
+
+    def setup_usertype_choices(self, loginuser_type, is_superuser):
+        self.fields["usertype"].choices = [
+            (c, l) for c, l in SiteMembership.type_choices if c <= 2
+        ]
 
 
 class UserForm(forms.ModelForm):
@@ -162,32 +207,37 @@ class UserForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         initial = kwargs.setdefault("initial", {})
         if "instance" in kwargs and kwargs["instance"] is not None:
-            user_profile = kwargs["instance"].bibos_profile
+            user_profile = kwargs["instance"].user_profile
             site = kwargs.pop("site")
             site_membership = user_profile.sitemembership_set.get(site=site)
             initial["usertype"] = site_membership.site_user_type
             initial["language"] = user_profile.language
         else:
             initial["usertype"] = SiteMembership.SITE_USER
-        self.initial_type = initial["usertype"]
+            language = kwargs.pop("language", None)
+            if language is not None:
+                initial["language"] = language
         super(UserForm, self).__init__(*args, **kwargs)
 
-    def set_usertype_single_choice(self, choice_type):
+    def set_usertype_limited_choices(self, choice_type):
         self.fields["usertype"].choices = [
-            (c, l) for c, l in SiteMembership.type_choices if c == choice_type
+            (c, l) for c, l in SiteMembership.type_choices if c <= choice_type
         ]
-        self.fields["usertype"].widget.attrs["readonly"] = True
+        if choice_type == SiteMembership.SITE_USER:  # Only one choice
+            self.fields["usertype"].widget.attrs["readonly"] = True
 
     # Sets the choices in the usertype widget depending on the usertype
     # of the user currently filling out the form
     def setup_usertype_choices(self, loginuser_type, is_superuser):
-        if is_superuser or loginuser_type == SiteMembership.SITE_ADMIN:
-            # superusers and site admins can both
-            # choose site admin or site user.
+        if is_superuser or loginuser_type == SiteMembership.CUSTOMER_ADMIN:
+            # superusers and customer admins can both
+            # choose customer admin, site admin or site user.
             self.fields["usertype"].choices = SiteMembership.type_choices
         else:
-            # Set to read-only single choice
-            self.set_usertype_single_choice(self.initial_type)
+            # Other users can only choose their own user type
+            # or less privileged user types
+            # If there is only one choice, set the field to read-only
+            self.set_usertype_limited_choices(loginuser_type)
 
     def clean(self):
         cleaned_data = self.cleaned_data
@@ -252,6 +302,12 @@ class ParameterForm(forms.Form):
                         }
                     )
                 )
+            elif inp.value_type == Input.CHOICE:
+                CHOICES = [
+                    (option.strip(), option.strip())
+                    for option in inp.default_value.split(",")
+                ]
+                self.fields[name] = forms.ChoiceField(**field_data, choices=CHOICES)
             else:
                 self.fields[name] = forms.CharField(**field_data)
 
@@ -262,37 +318,35 @@ class PCForm(forms.ModelForm):
         instance = getattr(self, "instance", None)
         if instance and instance.pk:
             self.fields["uid"].disabled = True
+            self.fields["mac"].disabled = True
 
     class Meta:
         model = PC
         exclude = (
             "configuration",
             "site",
-            "is_update_required",
             "created",
             "last_seen",
         )
-
-
-class SecurityProblemForm(forms.ModelForm):
-    def __init__(self, *args, **kwargs):
-        super(SecurityProblemForm, self).__init__(*args, **kwargs)
-
-    class Meta:
-        model = SecurityProblem
-        fields = "__all__"
-
-
-class ChangelogCommentForm(forms.ModelForm):
-    class Meta:
-        model = ChangelogComment
-        fields = ["content"]
 
 
 class SecurityEventForm(forms.ModelForm):
     class Meta:
         model = SecurityEvent
         fields = ("status", "assigned_user", "note")
+
+
+class EventRuleServerForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super(EventRuleServerForm, self).__init__(*args, **kwargs)
+
+    class Meta:
+        model = EventRuleServer
+        fields = "__all__"
+        widgets = {
+            "monitor_period_start": time_format,
+            "monitor_period_end": time_format,
+        }
 
 
 # Used on the Create and Update views

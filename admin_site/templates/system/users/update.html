@@ -7,26 +7,33 @@
 
 {% block subnav %}
 <div class="sublevelnav">
-
-  {% if site_membership.site_user_type == site_membership.SITE_ADMIN or user.is_superuser %}
+  {% if site_membership.site_user_type >= site_membership.CUSTOMER_ADMIN or user.is_superuser %}
     <div class="listutils">
-      <button class="btn btn-link" data-bs-target="#addNewUser" type="button" data-bs-toggle="modal">
+      <a class="btn btn-link" href="{% url 'link_users' site.uid %}">
+        <span class="material-icons">add</span>
+        {% translate "Add existing users to this site" %}
+      </a>
+    </div>
+  {% endif %}
+  {% if site_membership.site_user_type >= site_membership.SITE_ADMIN or user.is_superuser %}
+    <div class="listutils">
+      <a class="btn btn-link" href="{% url 'new_user' site.uid %}">
         <span class="material-icons">add</span>
         {% translate "Add new user" %}
-      </button>
+      </a>
     </div>
   {% endif %}
 
 
   <ul class="item-list">
     {% for listed_user in user_list %}
-      <li class="{% ifequal listed_user selected_user %}active{% endifequal %}">
+      <li class="{% if listed_user == selected_user %}active{% endif %}">
         <a class="item-list-link" href="/site/{{ site.url }}/users/{{ listed_user.username }}">
           {{ listed_user.username }}
         </a>
-        {% if listed_user == selected_user and site_membership.site_user_type == site_membership.SITE_ADMIN or listed_user == selected_user and user.is_superuser %}
+        {% if listed_user == selected_user and not_customer_admin and site_membership.site_user_type >= site_membership.SITE_ADMIN or listed_user == selected_user and user.is_superuser %}
           {% translate "Delete user" as delete_name %}
-          <a class="item-list-deletable material-icons" href="{% url 'delete_user' site.uid selected_user.username %}" title="{{ delete_name }}">
+          <a class="item-list-deletable material-icons" href="{% url 'user_delete' site.uid selected_user.username %}" title="{{ delete_name }}">
             clear
           </a>
         {% endif %}
@@ -39,10 +46,14 @@
 
 {% block specific_content %}
   <div class="container-fluid main sublevelmain">
+      {% if selected_user %}
       <h2 class="divideheader">{% translate "Profile:" %} <em>{{ selected_user.username }}</em></h2>
+      {% else %}
+      <h2 class="divideheader">{% translate "Create new user" %}</h2>
+      {% endif %}
       {% include 'notification.html' %}
       <div>
-        {% if site_membership.site_user_type != site_membership.SITE_ADMIN and not user.is_superuser and not user == selected_user %}
+        {% if site_membership.site_user_type < site_membership.SITE_ADMIN and not user.is_superuser and not user == selected_user %}
             <p> {% translate "Site users are not authorized to edit other users. Ask a site admin or Magenta for help." %}</p>
         {% else %}
             <form
@@ -67,27 +78,4 @@
   </div>
 
 
-  <!-- MODAL WINDOW FOR NEW USER REGISTRATION: -->
-
-  <div id="addNewUser" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <form action="{% url 'new_user' site.uid %}" name="create_user_form" id="create_user_form" method="post">
-          {% csrf_token %}
-          <div class="modal-header">
-            <h3 class="modal-title">{% translate "Add new user" %}</h3>
-            <button type="button" class="btn btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            {% include 'system/users/form.html' with form=create_form form_id='create_user_form' form_action=create_url %}
-          </div>
-          <div class="modal-footer">
-            {% translate "Create user" as create_name %}
-            <input type="submit" class="btn btn-primary" value="{{ create_name }}">
-            <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">{% translate "Cancel" %}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
 {% endblock %}

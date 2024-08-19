@@ -43,7 +43,7 @@ def get_fields(obj):
 
 # Useful for investigating what's in the {{context}}
 @register.filter
-def getallattrs(value):
+def get_all_attrs(value):
     return dir(value)
 
 
@@ -56,3 +56,13 @@ def bold(text):
 def italic(text):
     text = str(text)
     return mark_safe("<em>" + text + "</em>")
+
+
+@register.filter
+def get_item(dictionary, key):
+    return dictionary.get(key)
+
+
+@register.filter
+def get_model_name(text):
+    return text._meta.object_name

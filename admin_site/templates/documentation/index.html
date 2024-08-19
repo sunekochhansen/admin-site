@@ -1,5 +1,23 @@
 {% extends 'sitebase.html' %}
 {% load i18n %}
+{% load custom_tags %}
+
+<!-- Syntax highlighting -->
+{% block stylesheets %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/styles/foundation.min.css">
+{% endblock %}
+
+{% block javascripts %}
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@latest/build/highlight.min.js"></script>
+
+<script type="text/javascript">
+  /* Syntax highlighting */
+  const code_blocks = document.getElementsByClassName("docs-code")
+  for (cb of code_blocks) {
+    hljs.highlightElement(cb)
+  }
+  </script>
+{% endblock %}
 
 {% block header_title %}
 {% if docheading %}
@@ -25,15 +43,17 @@ detailpage
     {% translate "Return to admin" %}
   </a>
   {% for link, name in docmenuitems %}
-  {% if link %}
-  
-    <a class="nav-link link-light {% ifequal menu_active link %}active{% endifequal %}" href="{% url 'doc' link %}">
+  {% if link in pdf_href %}
+    <a class="nav-link link-light" href="{{ pdf_href|get_item:link }}">
+      {{ name }}
+    </a>
+  {% elif link %}
+    <a class="nav-link link-light {% if menu_active == link %}active{% endif %}" href="{% url 'doc' link %}">
       {{ name }}
     </a>
     {% if menu_active == link and submenu_template %}
       {% include submenu_template %}
     {% endif %}
-  
   {% else %}
   <hr>
   <h2 class="text-light">{{ name }}</h2>

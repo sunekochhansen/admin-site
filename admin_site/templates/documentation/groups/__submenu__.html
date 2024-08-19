@@ -1,8 +1,9 @@
+{% load i18n %}
 <ul class="docsubnav">
-    <li {% ifequal submenu_active 'edit' %}class="active"{% endifequal %}>
-      <a href="{% url 'doc' 'groups/edit' %}"> Generel redigering</a>
+    <li {% if submenu_active == 'edit' %}class="active"{% endif %}>
+      <a href="{% url 'doc' 'groups/edit' %}"> {% translate "General editing" %}</a>
     </li>
-    <li {% ifequal submenu_active 'scripts' %}class="active"{% endifequal %}>
-      <a href="{% url 'doc' 'groups/scripts' %}"> Tilknyttede Scripts</a>
+    <li {% if submenu_active == 'scripts' %}class="active"{% endif %}>
+      <a href="{% url 'doc' 'groups/scripts' %}"> {% translate "Associated Scripts" %}</a>
     </li>
 </ul>

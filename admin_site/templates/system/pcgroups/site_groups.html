@@ -21,20 +21,20 @@ active
   <div class="listutils">
     <button class="btn btn-link" type="button" data-bs-toggle="modal" data-bs-target="#addNewGroup">
       <span class="material-icons">add</span>
-        {% translate "Add new group" %}
+      {% translate "Add new group" %}
     </button>
   </div>
   <ul class="item-list">
     {% for group in site.groups.all %}
-      <li class="{% ifequal group selected_group %}active{% endifequal %}">
+      <li class="{% if group == selected_group %}active{% endif %}">
         <a class="item-list-link" href="/site/{{ site.url }}/groups/{{ group.url }}/">
           {{ group.name }}
         </a>
-        {% ifequal group selected_group %}
+        {% if group == selected_group %}
             <a class="item-list-deletable material-icons" href="/site/{{ site.url }}/groups/{{ selected_group.url }}/delete/" title="{% translate 'Delete group' %}">
               clear
             </a>
-        {% endifequal %}
+        {% endif %}
       </li>
     {% endfor %}
   </ul>
@@ -44,12 +44,12 @@ active
 {% block specific_content %}
   <div class="container-fluid main sublevelmain">
 
+  {% if site.groups.all %}  
     <h2 class="divideheader">{% translate "Details about" %} <em>{{ selected_group.name }}</em></h2>
     {% include 'notification.html' %}
 
     <form name="updategroupform"
       id="updategroupform"
-      action="{% url 'group' site.uid selected_group.url %}"
       method="post"
       enctype="multipart/form-data"
       class="row-fluid"
@@ -85,23 +85,48 @@ active
 
               {{ form.pcs.errors }}
               <div class="clearfix">
-              <label class="mb-2">{% translate "Computers in this group" %}</label>
-                <span class="badge bg-secondary picklist-counter-badge" style="float: right;">
+                <label class="mb-2">{% translate "Computers in this group" %}</label>
+                <span class="badge bg-secondary pick-list-counter-badge" style="float: right;">
                   <span class="material-icons px-1">computer</span>
-                    <span id="total-pcs"></span>
+                  <span id="total-pcs"></span>
                 </span>
               </div>
               {% translate "Add a computer to the group" as add_c %}
               {% translate "Remove computer from the group" as remove_c %}
-              {% include 'widgets/picklist.html' with submit_name='pcs' selected_list=selected_pcs available_list=available_pcs identifier='computer' add_text=add_c remove_text=remove_c site_url=site.uid target_section='computers' %}
+              {% translate "None chosen" as empty_t %}
+              {% include 'widgets/picklist.html' with submit_name='pcs' selected_list=selected_pcs available_list=available_pcs identifier='computer' add_text=add_c remove_text=remove_c empty_text=empty_t site_url=site.uid target_section='computers' %}
+
+            {# supervisor picklist #}
+            <div class="mt-3">
+              <p>
+                {% translate "Add a supervisor for the group" as add_s %}
+                {% translate "Remove a supervisor for the group" as remove_s %}
+
+                <label class="mt-2">{% translate "Supervisors for the group" %}</label>
+                {% translate 'This is used to control who receives the e-mails for Events, ie. Security Events or Offline Events. If one or more Supervisors are set for a given Group, these people will receive the e-mails instead of those set in the Monitoring Rule' as help_text %}
+                <button type="button" class="material-icons btn align-middle" data-container="body" title='{{help_text}}' data-toggle="popover" data-placement="right">
+                  help_outline
+                </button>
+                {% include 'widgets/picklist.html' with submit_name='supervisors' selected_list=selected_users available_list=available_users identifier='supervisor' add_text=add_s remove_text=remove_s empty_text=empty_t site_url=site.uid target_section='users' %}
+              </p>
+            </div>
 
             {# SecurityProblem #}
-            {% if security_problems_incl_site %}
+            {% if event_rules_incl_site %}
               <div class="mt-3">
-                <p>{% translate "Associated Security Rules" %}</p>
+                <p>{% translate "Effective monitoring rules for the group" %}</p>
                 <ul class="mt-2 list-group">
-                  {% for problem in security_problems_incl_site %}
-                    <li class="list-group-item"><a href="{% url 'security_problem' site.uid problem.uid %}">{{ problem }}</a></li>
+                  {% for e in event_rules_incl_site %}
+                    <li class="list-group-item py-3">
+                      {% if e|get_model_name == "EventRuleServer" %}
+                        <span class='material-icons me-2' title="{% translate "Offline Rule" %}">desktop_access_disabled</span>
+                        <a class="text-decoration-none" href="{% url 'event_rule_server' site.uid e.id %}">{{ e }}</a>
+                        </span>
+                      {% else %}
+                        <span class='material-icons me-2' title="{% translate "Security Problem" %}">gpp_maybe</span>
+                        <a class="text-decoration-none" href="{% url 'event_rule_security_problem' site.uid e.id %}">{{ e }}</a>
+                      {% endif %}
+                    </li>
                   {% endfor %}
                 </ul>
               </div>
@@ -126,8 +151,13 @@ active
             <strong>{% translate "Note" %}</strong>
             <ul>
             <li>{% translate 'If a script that takes arguments is added to the list, then these arguments are to be entered first by clicking "Edit", before you can click "Save changes"' %}.</li>
-            <li>{% translate "Editing the script arguments will not make the script run again" %}.</li>
+            {% if site.rerun_asc %}
+              <li>{% translate "Editing the script arguments will make the script run again on all Computers in the Group. This can be toggled off under Site settings" %}.</li>
+            {% else %}
+              <li>{% translate "Editing the script arguments will not make the script run again. This can be changed under Site settings" %}.</li>
+            {% endif %}
             <li>{% translate "Computers already in the group only run newly added scripts, but Computers newly added to the Group run all the scripts on the list" %}.</li>
+            <li>{% translate "Removing a script from the Group will NOT remove the effect of the script from the Computers in the Group" %}.</li>
             </ul>
           </div>
           {% include 'system/pcgroups/policy_list/list.html' with entries=selected_group.ordered_policy policy_id='group_policies' %}
@@ -165,7 +195,11 @@ active
         }
       }
     </script>
-
+    {% else %}
+      <h2 class="divideheader">{% translate "Groups" %}</h2>
+      <p>{% translate "No groups were found" %}</p>
+      <p>{% translate "Clik the 'Add new group' button in the menu to the left to create a group" %}</p>
+    {% endif %}
     <div id="addNewGroup" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">

@@ -1,16 +1,16 @@
 from django.db import models
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 
 from system.models import Site
 
 
 class UserProfile(models.Model):
-    """BibOS Admin specific user profile."""
+    """OS2borgerPC Admin specific user profile."""
 
     # This is the user to which the profile belongs
     user = models.OneToOneField(
-        User, unique=True, related_name="bibos_profile", on_delete=models.CASCADE
+        User, unique=True, related_name="user_profile", on_delete=models.CASCADE
     )
 
     sites = models.ManyToManyField(
@@ -30,6 +30,10 @@ class UserProfile(models.Model):
         max_length=10,
         default=DANISH,
     )
+
+    is_hidden = models.BooleanField(
+        verbose_name=_("hidden user"), default=False, null=False
+    )
     # TODO: Add more fields/user options as needed.
     # TODO: Make before_save integrity check that SITE_USER and
     # SITE_ADMIN users MUST be associated with a site.
@@ -41,7 +45,12 @@ class UserProfile(models.Model):
 class SiteMembership(models.Model):
     SITE_USER = 1
     SITE_ADMIN = 2
-    type_choices = ((SITE_USER, _("Site User")), (SITE_ADMIN, _("Site Admin")))
+    CUSTOMER_ADMIN = 3
+    type_choices = (
+        (SITE_USER, _("Site User")),
+        (SITE_ADMIN, _("Site Admin")),
+        (CUSTOMER_ADMIN, _("Customer Admin")),
+    )
 
     site_user_type = models.IntegerField(choices=type_choices, default=SITE_USER)
 
