@@ -1,4 +1,4 @@
-Django==5.1.4
+Django==5.1.5
 crispy-bootstrap5==2024.10
 django-crispy-forms==2.3
 django-extensions==3.2.3
