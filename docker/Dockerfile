@@ -1,7 +1,7 @@
 # Copyright (C) 2021 Magenta ApS, http://magenta.dk.
 # Contact: info@magenta.dk.
 
-FROM node:16 as frontend
+FROM node:20 as frontend
 
 WORKDIR /code/nodejs
 
@@ -10,7 +10,7 @@ RUN npm ci \
  && npm run build
 CMD ["/bin/sh", "-c", "npm run watch-sass"]
 
-FROM python:3.8 AS os2borgerpc
+FROM python:3.12-slim AS os2borgerpc
 
 LABEL org.opencontainers.image.title="OS2borgerPC" \
       org.opencontainers.image.vendor="Magenta ApS" \

@@ -9,7 +9,7 @@ from django.contrib.auth import views as auth_views
 
 from .api import api
 
-from django_xmlrpc.views import handle_xmlrpc
+from modernrpc.views import RPCEntryPoint
 from markdownx import urls as markdownx
 from two_factor.urls import urlpatterns as tf_urls
 from two_factor import views as otp_views
@@ -18,8 +18,8 @@ admin.autodiscover()
 
 urlpatterns = [
     re_path("accounts/login/", otp_views.LoginView.as_view()),
-    re_path(r"^xmlrpc/$", handle_xmlrpc, name="xmlrpc"),
-    re_path(r"^admin-xml/$", handle_xmlrpc),
+    re_path(r"^xmlrpc/$", RPCEntryPoint.as_view()),
+    re_path(r"^admin-xml/$", RPCEntryPoint.as_view()),
     re_path(
         "accounts/logout/", auth_views.LogoutView.as_view(template_name="logout.html")
     ),
